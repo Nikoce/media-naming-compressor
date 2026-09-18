@@ -1,90 +1,55 @@
-# 素材批量命名与压制 v0.5（在线部署版）
+# Media Naming Compressor v0.6
 
-这是一个可部署到公网网址的批量素材命名 + FFmpeg 压制工具。团队成员只需要打开浏览器网址，无需安装 Node.js、FFmpeg 或桌面安装包。
+一个部署在 GitHub Pages 上的免费浏览器工具，用于批量读取视频信息、生成统一文件名并压制为 MP4。视频只在当前浏览器内处理，不会上传到服务器。
 
-## 当前命名规则
-
-```text
-YYMMDD_P-{产品}_H-{主题}[H重复时-01/-02…]_VL-S-{时长}_S-{尺寸}_L-{语言}_D-{制作人}_M-{制作时长}.mp4
-```
-
-例如同批 3 个素材的 H 都是 `FindingMoney`：
+## 命名规则
 
 ```text
-260918_P-BallSort_H-FindingMoney-01_VL-S-60_S-169_L-en_D-Niko_M-3.mp4
-260918_P-BallSort_H-FindingMoney-02_VL-S-60_S-916_L-en_D-Niko_M-3.mp4
-260918_P-BallSort_H-FindingMoney-03_VL-S-30_S-916_L-en_D-Niko_M-3.mp4
+YYMMDD_P-{产品}_H-{主题}[H重复时-01/-02...]_VL-S-{时长}_S-{尺寸}_L-{语言}_D-{制作人}_M-{制作时长}.mp4
 ```
 
-重复判断只看 H 字段；同一批 H 相同就按素材顺序追加 `01 / 02 / 03...`。日期始终使用用户浏览器当天日期 `YYMMDD`。
+同一批素材只有 H 字段相同时才追加两位序号。删除素材后，剩余同主题素材会按当前顺序重新编号。
 
-## v0.5 在线版改动
+## 功能
 
-- 服务监听 `0.0.0.0` 和平台提供的 `PORT`，可部署到 Railway 等容器平台。
-- 新增 `Dockerfile`，容器内自动安装 FFmpeg / FFprobe。
-- 用户无需安装任何程序，只需访问部署网址。
-- 上传、压制和输出文件使用服务器临时目录，不写入 Git 仓库。
-- 每个输出使用随机下载令牌隔离，避免不同用户同名素材互相覆盖或猜到别人的下载地址。
-- 单个下载和 ZIP 批量下载都继续保留最终命名文件名。
-- 临时上传默认 2 小时清理，压制结果默认 1 小时清理，ZIP 临时链接默认 10 分钟失效。
-- 命名历史同时保存在浏览器 `localStorage`，即使服务器重新部署，同一浏览器仍保留自己的历史下拉记录。
+- 批量添加视频并自动读取时长、分辨率和画幅比例。
+- 从文件名 `L-en` 等标签识别语言，也可以手动覆盖。
+- 使用浏览器内的 FFmpeg WebAssembly 压制 H.264/AAC MP4。
+- 提供广告标准、高质量和小体积三种压制预设。
+- 支持单个下载和 ZIP 批量下载。
+- 常用字段历史只保存在当前浏览器的 `localStorage`。
 
-## 主要功能
+## 免费方案边界
 
-- 批量上传视频。
-- 日期自动使用当日日期。
-- 自动读取视频时长、分辨率和画幅比例。
-- 从媒体语言标签或已有文件名 `L-en` 等信息读取语言；无法识别时可手动覆盖。
-- 产品、主题、语言、制作人、制作时长支持可输入 + 历史下拉。
-- 顶部字段单行展示。
-- 每个素材卡片实时显示最终命名预览。
-- H 字段重复自动追加两位序号。
-- 批量 FFmpeg 压制。
-- 单个下载 + ZIP 打包下载全部成功素材。
-
-> 当前语言自动识别依赖视频元数据或文件名标签，还没有接入 Whisper 语音内容识别。
-
-## 部署到 Railway
-
-1. 把本项目提交到 GitHub 仓库。
-2. 在 Railway 新建 Project，并选择 **Deploy from GitHub repo**。
-3. 选择该仓库。Railway 会检测根目录的 `Dockerfile` 并自动构建。
-4. 部署完成后，在 Railway 的 Networking / Public Networking 中生成公网 Domain。
-5. 团队成员直接打开该网址即可使用。
-
-项目已支持平台动态 `PORT`，无需额外修改启动命令。
-
-## 可选环境变量
-
-```text
-MAX_UPLOAD_GB=5
-INPUT_TTL_MS=7200000
-OUTPUT_TTL_MS=3600000
-BATCH_LINK_TTL_MS=600000
-```
-
-其中：
-
-- `MAX_UPLOAD_GB`：单个视频最大上传体积，默认 5GB。
-- `INPUT_TTL_MS`：上传源文件保留时间，默认 2 小时。
-- `OUTPUT_TTL_MS`：压制结果保留时间，默认 1 小时。
-- `BATCH_LINK_TTL_MS`：ZIP 下载令牌有效时间，默认 10 分钟。
+- 网站托管在 GitHub Pages，不需要 Railway 或常驻服务器。
+- 媒体不离开用户电脑，不产生服务器存储和流量账单。
+- 压制速度、可处理文件大小受浏览器内存和电脑性能限制。大型或长视频建议使用桌面版 FFmpeg。
+- GitHub Pages 公开站点适用于静态页面，不提供账号、云端历史或服务端任务队列。
 
 ## 本地开发
 
-本地开发需要 Node.js 20+，并确保系统已安装 FFmpeg / FFprobe：
+需要 Node.js 20.19 或更高版本。
 
 ```bash
 npm install
-npm start
+npm run dev
 ```
 
-然后打开：
+构建并检查：
 
-```text
-http://127.0.0.1:4317
+```bash
+npm run check
+npm run build
 ```
 
-## 隐私说明
+`predev` 和 `prebuild` 会把 `@ffmpeg/core` 的运行文件复制到 `public/ffmpeg/`。该目录和 `dist/` 都是生成产物，不提交到 Git。
 
-在线版和原先本机版的处理方式不同：视频会上传到你部署的服务器进行 FFmpeg 压制，然后再下载到用户电脑。项目本身不会把视频上传到第三方业务接口；临时文件会按照 TTL 自动清理，但部署方仍应根据团队素材的保密要求选择合适的服务器和访问控制策略。
+## GitHub Pages 部署
+
+推送到 `main` 后，[`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) 会自动构建并发布 `dist/`。仓库 Pages 的 Source 需要设为 **GitHub Actions**。
+
+线上地址：<https://nikoce.github.io/media-naming-compressor/>
+
+## 隐私
+
+源视频、压制结果和 ZIP 都只存在于当前页面的内存或浏览器下载中。关闭或刷新页面后，未下载的压制结果不会保留。

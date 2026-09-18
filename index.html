@@ -3,25 +3,25 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#176b52" />
   <title>素材批量命名与压制</title>
-  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
       <div>
-        <div class="eyebrow">ONLINE MEDIA WORKBENCH</div>
+        <div class="eyebrow">LOCAL MEDIA WORKBENCH</div>
         <h1>素材批量命名与压制</h1>
-        <p>批量加入素材，统一填写命名字段；日期固定为当日，时长、尺寸/比例、语言自动识别；同一批只要 H 主题字段重复，就自动追加 01、02…，命名预览确认后直接云端压制并下载。</p>
+        <p>视频不上传，命名、压制和 ZIP 打包全部在当前浏览器完成。</p>
       </div>
-      <div class="local-badge"><span></span>在线版</div>
+      <div class="local-badge"><span></span>零费用 · 本地处理</div>
     </header>
 
     <section class="drop-card" id="dropZone">
       <input id="fileInput" type="file" accept="video/*,.mkv,.avi,.webm,.mov,.m4v" multiple hidden />
-      <div class="drop-icon">＋</div>
+      <div class="drop-icon" aria-hidden="true">＋</div>
       <div class="drop-title">拖入视频文件</div>
-      <div class="drop-copy">支持一次加入多个视频，加入后自动分析并生成批量命名预览</div>
+      <div class="drop-copy">支持批量选择，文件只保留在当前浏览器</div>
       <button class="ghost-button" id="chooseBtn" type="button">选择视频</button>
     </section>
 
@@ -59,8 +59,8 @@
             <input id="ratio" value="按素材自动" readonly autocomplete="off" />
           </label>
           <label class="field">
-            <span>语言 L <em>自动 / 可覆盖</em></span>
-            <input id="language" list="languageHistory" placeholder="自动识别" autocomplete="off" />
+            <span>语言 L <em>文件名 / 可覆盖</em></span>
+            <input id="language" list="languageHistory" placeholder="例如 en" autocomplete="off" />
             <datalist id="languageHistory"></datalist>
           </label>
           <label class="field">
@@ -102,8 +102,9 @@
         <div class="panel-heading compact-heading">
           <div>
             <span class="section-kicker">03</span>
-            <h2>压制输出</h2>
+            <h2>本地压制</h2>
           </div>
+          <div class="engine-status" id="engineStatus">引擎按需加载</div>
         </div>
         <div class="compress-layout">
           <div class="preset-row">
@@ -124,7 +125,7 @@
             </label>
           </div>
           <div class="action-row">
-            <div class="notice" id="notice">命名预览确认无误后，视频将上传到当前服务器压制，并按预览名称输出。</div>
+            <div class="notice" id="notice">压制时请保持页面打开，速度取决于当前电脑性能。</div>
             <button class="primary-button" id="processBtn" type="button">批量命名并压制输出</button>
           </div>
         </div>
@@ -145,6 +146,6 @@
       </section>
     </section>
   </main>
-  <script src="/app.js"></script>
+  <script type="module" src="/src/app.js"></script>
 </body>
 </html>

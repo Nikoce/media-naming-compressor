@@ -1,4 +1,6 @@
 node_modules/
+dist/
+public/ffmpeg/
 .env
 .env.*
 !.env.example
