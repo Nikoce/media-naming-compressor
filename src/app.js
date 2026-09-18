@@ -2,6 +2,17 @@ import './styles.css';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
 import JSZip from 'jszip';
+import {
+  ALL_FORMATS,
+  BlobSource,
+  BufferTarget,
+  Conversion,
+  Input,
+  Mp4OutputFormat,
+  Output,
+  Quality,
+  canEncodeVideo,
+} from 'mediabunny';
 
 const state = {
   files: [],
@@ -10,7 +21,10 @@ const state = {
   completedOutputs: [],
   ffmpeg: null,
   ffmpegLoading: null,
+  fastEngineSupported: null,
+  fastEngineChecking: null,
   currentProcessingId: null,
+  currentBatchIndex: 0,
   lastProgressPercent: -1,
   processing: false,
   translating: false,
@@ -38,6 +52,23 @@ const batchDownloadBtn = $('batchDownloadBtn');
 const batchDownloadMeta = $('batchDownloadMeta');
 const engineStatus = $('engineStatus');
 const HISTORY_STORAGE_KEY = 'mediaNamingCompressor.history.v2';
+const COMPRESSION_PROFILES = {
+  standard: {
+    videoQuality: 0.55,
+    audioBitrate: 192000,
+    ffmpegArgs: ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-c:a', 'aac', '-b:a', '192k'],
+  },
+  quality: {
+    videoQuality: 0.60,
+    audioBitrate: 192000,
+    ffmpegArgs: ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-c:a', 'aac', '-b:a', '192k'],
+  },
+  small: {
+    videoQuality: 0.35,
+    audioBitrate: 128000,
+    ffmpegArgs: ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26', '-c:a', 'aac', '-b:a', '128k'],
+  },
+};
 
 const fields = {
   date: $('date'),
@@ -245,7 +276,7 @@ function itemClass(item) {
 
 function statusChip(item) {
   if (item.error || item.processError || item.status === '输出失败') return { text: '异常', cls: 'error' };
-  if (isProcessing(item)) return { text: item.progress ? `${item.progress}%` : '压制中', cls: '' };
+  if (isProcessing(item)) return { text: item.progress ? `${item.progress}%` : (item.engine === 'ffmpeg' ? '兼容压制' : '极速压制'), cls: '' };
   if (item.status === '输出完成') return { text: '已输出', cls: 'ok' };
   if (!item.detected) return { text: '分析中', cls: '' };
   const naming = namingState(item);
@@ -334,6 +365,7 @@ function invalidateOutputs() {
       item.status = item.detected ? '分析完成' : '等待分析';
       item.progress = 0;
       item.processError = null;
+      item.engine = null;
     }
   }
 }
@@ -511,23 +543,94 @@ function readBrowserMetadata(file) {
   });
 }
 
+async function readMediaBunnyMetadata(file) {
+  const input = new Input({
+    source: new BlobSource(file),
+    formats: ALL_FORMATS,
+  });
+  try {
+    const video = await input.getPrimaryVideoTrack();
+    if (!video) throw new Error('未找到视频轨道');
+    const audio = await input.getPrimaryAudioTrack();
+    const tracks = [video, audio].filter(Boolean);
+    let duration = await input.getDurationFromMetadata(tracks);
+    if (!Number.isFinite(duration) || duration <= 0) duration = await input.computeDuration(tracks);
+    const [width, height, taggedLanguage] = await Promise.all([
+      video.getDisplayWidth(),
+      video.getDisplayHeight(),
+      audio ? audio.getLanguageCode() : '',
+    ]);
+    return {
+      duration: Number.isFinite(duration) && duration > 0 ? Math.max(1, Math.round(duration)) : '',
+      width: Number(width || 0),
+      height: Number(height || 0),
+      taggedLanguage,
+    };
+  } finally {
+    input.dispose();
+  }
+}
+
+function updateCompressionProgress(progress) {
+  const item = state.files.find((candidate) => candidate.id === state.currentProcessingId);
+  if (!item || !Number.isFinite(progress)) return;
+  const percent = Math.max(0, Math.min(100, Math.round(progress * 100)));
+  if (percent === state.lastProgressPercent) return;
+  state.lastProgressPercent = percent;
+  item.progress = percent;
+  item.status = `正在压制 ${percent}%`;
+  if (state.activeProcessButton) {
+    state.activeProcessButton.textContent = `正在处理 ${state.currentBatchIndex} / ${state.files.length} · ${percent}%`;
+  }
+  renderVideoList();
+}
+
+async function ensureFastEngine() {
+  if (state.fastEngineSupported !== null) return state.fastEngineSupported;
+  if (state.fastEngineChecking) return state.fastEngineChecking;
+  state.fastEngineChecking = (async () => {
+    engineStatus.textContent = '正在检测 WebCodecs 极速引擎…';
+    engineStatus.className = 'engine-status loading';
+    try {
+      const isSafari = /Safari/i.test(navigator.userAgent) && !/(Chrome|Chromium|CriOS|Edg|OPR)/i.test(navigator.userAgent);
+      if (isSafari) {
+        state.fastEngineSupported = false;
+        engineStatus.textContent = 'Safari 使用 FFmpeg 兼容引擎';
+        engineStatus.className = 'engine-status fallback';
+        return false;
+      }
+      const supported = await canEncodeVideo('avc', {
+        quality: new Quality('medium'),
+        hardwareAcceleration: 'prefer-hardware',
+      });
+      state.fastEngineSupported = supported;
+      engineStatus.textContent = supported ? 'WebCodecs 极速引擎可用' : '将使用 FFmpeg 兼容引擎';
+      engineStatus.className = `engine-status ${supported ? 'ready' : 'fallback'}`;
+      return supported;
+    } catch (error) {
+      console.warn('WebCodecs capability check failed', error);
+      state.fastEngineSupported = false;
+      engineStatus.textContent = '将使用 FFmpeg 兼容引擎';
+      engineStatus.className = 'engine-status fallback';
+      return false;
+    }
+  })();
+  try {
+    return await state.fastEngineChecking;
+  } finally {
+    state.fastEngineChecking = null;
+  }
+}
+
 async function ensureFFmpeg() {
   if (state.ffmpeg?.loaded) return state.ffmpeg;
   if (state.ffmpegLoading) return state.ffmpegLoading;
   state.ffmpegLoading = (async () => {
-    engineStatus.textContent = '正在加载本地压制引擎…';
+    engineStatus.textContent = '正在加载 FFmpeg 兼容引擎…';
     engineStatus.className = 'engine-status loading';
     const ffmpeg = new FFmpeg();
     ffmpeg.on('progress', ({ progress }) => {
-      const item = state.files.find((candidate) => candidate.id === state.currentProcessingId);
-      if (!item || !Number.isFinite(progress)) return;
-      const percent = Math.max(0, Math.min(100, Math.round(progress * 100)));
-      if (percent === state.lastProgressPercent) return;
-      state.lastProgressPercent = percent;
-      item.progress = percent;
-      item.status = `正在压制 ${percent}%`;
-      if (state.activeProcessButton) state.activeProcessButton.textContent = `正在压制 ${percent}%`;
-      renderVideoList();
+      updateCompressionProgress(progress);
     });
     const base = new URL(import.meta.env.BASE_URL, window.location.href);
     await ffmpeg.load({
@@ -535,7 +638,7 @@ async function ensureFFmpeg() {
       wasmURL: new URL('ffmpeg/ffmpeg-core.wasm', base).href,
     });
     state.ffmpeg = ffmpeg;
-    engineStatus.textContent = '本地引擎已就绪';
+    engineStatus.textContent = 'FFmpeg 兼容引擎已就绪';
     engineStatus.className = 'engine-status ready';
     return ffmpeg;
   })();
@@ -543,7 +646,7 @@ async function ensureFFmpeg() {
     return await state.ffmpegLoading;
   } catch (error) {
     state.ffmpegLoading = null;
-    engineStatus.textContent = '引擎加载失败';
+    engineStatus.textContent = 'FFmpeg 兼容引擎加载失败';
     engineStatus.className = 'engine-status error';
     throw error;
   }
@@ -609,9 +712,16 @@ async function analyzeOne(index) {
     try {
       metadata = await readBrowserMetadata(item.file);
     } catch (_) {
-      item.status = '正在使用本地引擎分析…';
-      renderVideoList();
-      metadata = await probeWithFFmpeg(item.file);
+      try {
+        item.status = '正在使用极速引擎分析…';
+        renderVideoList();
+        metadata = await readMediaBunnyMetadata(item.file);
+      } catch (mediaBunnyError) {
+        console.warn('Fast metadata reader could not inspect this file', mediaBunnyError);
+        item.status = '正在使用兼容引擎分析…';
+        renderVideoList();
+        metadata = await probeWithFFmpeg(item.file);
+      }
     }
     const { duration, width, height, taggedLanguage = '' } = metadata;
     item.detected = {
@@ -653,26 +763,89 @@ function setProcessingControls(processing) {
   syncBusyControls();
 }
 
-function profileArgs(preset) {
-  const profiles = {
-    standard: ['-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'],
-    quality: ['-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'],
-    small: ['-c:v', 'libx264', '-preset', 'medium', '-crf', '26', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart'],
-  };
-  return profiles[preset] || profiles.standard;
+function profileFor(preset) {
+  return COMPRESSION_PROFILES[preset] || COMPRESSION_PROFILES.standard;
 }
 
-async function transcodeItem(ffmpeg, item, preset, outputName) {
+async function transcodeWithMediaBunny(item, preset, outputName) {
+  const profile = profileFor(preset);
+  const input = new Input({
+    source: new BlobSource(item.file),
+    formats: ALL_FORMATS,
+  });
+  const target = new BufferTarget();
+  const output = new Output({
+    target,
+    format: new Mp4OutputFormat({ fastStart: false }),
+  });
+  let conversion = null;
+  try {
+    const videoTrack = await input.getPrimaryVideoTrack();
+    if (!videoTrack) throw new Error('极速引擎未找到视频轨道');
+    if (!await videoTrack.canDecode()) {
+      const codec = await videoTrack.getCodec();
+      throw new Error(`极速引擎无法解码${codec ? ` ${codec}` : '此视频格式'}`);
+    }
+
+    const videoQuality = new Quality(profile.videoQuality);
+    const [width, height] = await Promise.all([
+      videoTrack.getCodedWidth(),
+      videoTrack.getCodedHeight(),
+    ]);
+    const canEncode = await canEncodeVideo('avc', {
+      width,
+      height,
+      quality: videoQuality,
+      hardwareAcceleration: 'prefer-hardware',
+    });
+    if (!canEncode) throw new Error('极速引擎无法以 H.264 编码此分辨率');
+
+    conversion = await Conversion.init({
+      input,
+      output,
+      tracks: 'primary',
+      showWarnings: false,
+      video: {
+        codec: 'avc',
+        quality: videoQuality,
+        hardwareAcceleration: 'prefer-hardware',
+      },
+      audio: async (track) => (
+        await track.getCodec() === 'aac'
+          ? {}
+          : { codec: 'aac', quality: new Quality({ bitrate: profile.audioBitrate }) }
+      ),
+    });
+    if (!conversion.isValid) {
+      const reasons = [...new Set(conversion.discardedTracks.map((track) => track.reason))].join(', ');
+      throw new Error(`极速引擎不支持此素材${reasons ? `（${reasons}）` : ''}`);
+    }
+    conversion.onProgress = updateCompressionProgress;
+    await conversion.execute();
+    if (!target.buffer?.byteLength) throw new Error('极速引擎没有生成有效文件');
+    const blob = new Blob([target.buffer], { type: 'video/mp4' });
+    return { outputName, blob, url: URL.createObjectURL(blob), engine: 'webcodecs' };
+  } catch (error) {
+    if (conversion && conversion.state !== 'done' && conversion.state !== 'canceled') {
+      await conversion.cancel().catch(() => {});
+    }
+    throw error;
+  } finally {
+    input.dispose();
+  }
+}
+
+async function transcodeWithFFmpeg(ffmpeg, item, preset, outputName) {
   const extension = (item.file.name.match(/\.[a-z0-9]+$/i)?.[0] || '.bin').toLowerCase();
   const inputPath = `input-${item.id}${extension}`;
   const outputPath = `output-${item.id}.mp4`;
   try {
     await ffmpeg.writeFile(inputPath, await fetchFile(item.file));
-    const code = await ffmpeg.exec(['-y', '-i', inputPath, ...profileArgs(preset), outputPath]);
+    const code = await ffmpeg.exec(['-y', '-i', inputPath, ...profileFor(preset).ffmpegArgs, outputPath]);
     if (code !== 0) throw new Error(`FFmpeg 退出码 ${code}`);
     const outputData = await ffmpeg.readFile(outputPath);
     const blob = new Blob([outputData], { type: 'video/mp4' });
-    return { outputName, blob, url: URL.createObjectURL(blob) };
+    return { outputName, blob, url: URL.createObjectURL(blob), engine: 'ffmpeg' };
   } finally {
     await ffmpeg.deleteFile(inputPath).catch(() => {});
     await ffmpeg.deleteFile(outputPath).catch(() => {});
@@ -696,34 +869,54 @@ async function processAll(renameOutput) {
   const compressionNames = renameOutput ? null : compressionOnlyNames();
   state.activeProcessButton = activeButton;
   setProcessingControls(true);
-  activeButton.textContent = '正在加载本地引擎…';
+  activeButton.textContent = '正在检测极速引擎…';
   resultPanel.hidden = false;
 
-  let ffmpeg;
-  try {
-    ffmpeg = await ensureFFmpeg();
-  } catch (error) {
-    state.activeProcessButton = null;
-    setProcessingControls(false);
-    activeButton.textContent = idleLabel;
-    updateThemeTranslateButton();
-    window.alert(`本地压制引擎加载失败：${error.message || error}`);
-    return;
-  }
+  const fastEngineAvailable = await ensureFastEngine();
+  let ffmpeg = null;
+  let usedFastEngine = false;
+  let usedFallbackEngine = false;
 
   for (let i = 0; i < state.files.length; i += 1) {
     const item = state.files[i];
     state.currentProcessingId = item.id;
+    state.currentBatchIndex = i + 1;
     state.lastProgressPercent = -1;
     item.progress = 0;
     item.processError = null;
+    item.engine = fastEngineAvailable ? 'webcodecs' : 'ffmpeg';
     item.status = '正在压制 0%';
     activeButton.textContent = `正在处理 ${i + 1} / ${state.files.length}`;
     renderVideoList();
     const finalValues = renameOutput ? finalValuesFor(item) : null;
     const outputName = renameOutput ? nameFor(item) : compressionNames.get(item.id);
     try {
-      const output = await transcodeItem(ffmpeg, item, preset, outputName);
+      let output = null;
+      let fastEngineError = null;
+      if (fastEngineAvailable) {
+        try {
+          output = await transcodeWithMediaBunny(item, preset, outputName);
+          usedFastEngine = true;
+        } catch (error) {
+          fastEngineError = error;
+          console.warn(`Fast compression failed for ${item.file.name}; falling back to FFmpeg`, error);
+          item.engine = 'ffmpeg';
+          item.progress = 0;
+          item.status = '正在压制 0%';
+          state.lastProgressPercent = -1;
+          activeButton.textContent = `正在切换兼容引擎 ${i + 1} / ${state.files.length}`;
+          engineStatus.textContent = '正在切换 FFmpeg 兼容引擎…';
+          engineStatus.className = 'engine-status loading';
+          renderVideoList();
+        }
+      }
+      if (!output) {
+        ffmpeg ||= await ensureFFmpeg();
+        output = await transcodeWithFFmpeg(ffmpeg, item, preset, outputName);
+        if (fastEngineError) output.fallbackReason = fastEngineError.message || String(fastEngineError);
+        usedFallbackEngine = true;
+      }
+      item.engine = output.engine;
       item.status = '输出完成';
       item.progress = 100;
       item.processError = null;
@@ -740,9 +933,20 @@ async function processAll(renameOutput) {
   }
 
   state.currentProcessingId = null;
+  state.currentBatchIndex = 0;
   state.activeProcessButton = null;
   setProcessingControls(false);
   activeButton.textContent = idleLabel;
+  if (usedFastEngine && usedFallbackEngine) {
+    engineStatus.textContent = '双引擎已就绪';
+    engineStatus.className = 'engine-status ready';
+  } else if (usedFastEngine) {
+    engineStatus.textContent = 'WebCodecs 极速引擎已就绪';
+    engineStatus.className = 'engine-status ready';
+  } else if (usedFallbackEngine) {
+    engineStatus.textContent = 'FFmpeg 兼容引擎已就绪';
+    engineStatus.className = 'engine-status fallback';
+  }
   updateThemeTranslateButton();
 }
 
@@ -786,7 +990,10 @@ async function downloadBatchZip() {
 function appendResult(output, error = '') {
   const el = document.createElement('div');
   el.className = `result-item${error ? ' error' : ''}`;
-  el.innerHTML = `<div class="result-name">${escapeHtml(error ? `${output.outputName} · ${error}` : output.outputName)}</div>${error ? '' : '<button class="download-button" type="button">下载</button>'}`;
+  const engineLabel = output.engine === 'webcodecs' ? 'WebCodecs 极速' : 'FFmpeg 兼容';
+  el.innerHTML = error
+    ? `<div class="result-name">${escapeHtml(`${output.outputName} · ${error}`)}</div>`
+    : `<div class="result-main"><div class="result-name">${escapeHtml(output.outputName)}</div><div class="result-meta ${output.engine === 'webcodecs' ? 'fast' : 'fallback'}">${engineLabel}</div></div><button class="download-button" type="button">下载</button>`;
   if (!error) el.querySelector('button').addEventListener('click', () => triggerDownload(output.url, output.outputName));
   results.appendChild(el);
 }

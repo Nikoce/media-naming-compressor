@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#176b52" />
+  <link rel="icon" href="data:," />
   <title>素材批量命名与压制</title>
 </head>
 <body>
@@ -107,28 +108,28 @@
             <span class="section-kicker">03</span>
             <h2>本地压制</h2>
           </div>
-          <div class="engine-status" id="engineStatus">引擎按需加载</div>
+          <div class="engine-status" id="engineStatus">WebCodecs 极速优先</div>
         </div>
         <div class="compress-layout">
           <div class="preset-row">
             <label class="preset-card active">
               <input type="radio" name="preset" value="standard" checked />
               <strong>广告标准</strong>
-              <span>H.264 · CRF 20 · AAC 192k</span>
+              <span>清晰度与体积平衡</span>
             </label>
             <label class="preset-card">
               <input type="radio" name="preset" value="quality" />
               <strong>高质量</strong>
-              <span>H.264 · CRF 18 · AAC 192k</span>
+              <span>细节优先，文件较大</span>
             </label>
             <label class="preset-card">
               <input type="radio" name="preset" value="small" />
               <strong>小体积</strong>
-              <span>H.264 · CRF 26 · AAC 128k</span>
+              <span>更强压缩，更省空间</span>
             </label>
           </div>
           <div class="action-row">
-            <div class="notice" id="notice">压制时请保持页面打开，速度取决于当前电脑性能。</div>
+            <div class="notice" id="notice">默认使用 WebCodecs 极速压制，不兼容的素材会自动切换 FFmpeg。</div>
             <div class="process-actions">
               <button class="secondary-button" id="compressOnlyBtn" type="button">仅压制（保留原名）</button>
               <button class="primary-button" id="processBtn" type="button">批量命名并压制</button>

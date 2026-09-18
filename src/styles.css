@@ -19,6 +19,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -135,6 +136,7 @@ h1 {
 }
 .engine-status.loading { border-color: #c7d5ef; color: var(--blue); background: var(--blue-soft); }
 .engine-status.ready { border-color: #b8d9ca; color: var(--accent); background: var(--accent-soft); }
+.engine-status.fallback { border-color: #e3d3a7; color: var(--warn); background: var(--warn-soft); }
 .engine-status.error { border-color: #e1b5b0; color: var(--danger); background: var(--danger-soft); }
 
 .ghost-button, .text-button { border: 0; background: transparent; color: var(--blue); font-weight: 760; }
@@ -221,7 +223,11 @@ h1 {
 
 .results { display: grid; gap: 8px; }
 .result-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 12px 13px; border: 1px solid var(--line); border-radius: 6px; }
+.result-main { min-width: 0; display: grid; gap: 5px; }
 .result-name { font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
+.result-meta { width: fit-content; font-size: 10px; font-weight: 800; }
+.result-meta.fast { color: var(--accent); }
+.result-meta.fallback { color: var(--warn); }
 .result-item.error { border-color: #dfb1ad; background: #fff9f8; color: #943a33; }
 .download-button { width: 72px; height: 34px; border: 1px solid #b8c9e9; border-radius: 6px; background: var(--blue-soft); color: var(--blue); font-size: 12px; font-weight: 800; }
 .result-heading { align-items: center; }
