@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>素材批量命名与压制</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">ONLINE MEDIA WORKBENCH</div>
+        <h1>素材批量命名与压制</h1>
+        <p>批量加入素材，统一填写命名字段；日期固定为当日，时长、尺寸/比例、语言自动识别；同一批只要 H 主题字段重复，就自动追加 01、02…，命名预览确认后直接云端压制并下载。</p>
+      </div>
+      <div class="local-badge"><span></span>在线版</div>
+    </header>
+
+    <section class="drop-card" id="dropZone">
+      <input id="fileInput" type="file" accept="video/*,.mkv,.avi,.webm,.mov,.m4v" multiple hidden />
+      <div class="drop-icon">＋</div>
+      <div class="drop-title">拖入视频文件</div>
+      <div class="drop-copy">支持一次加入多个视频，加入后自动分析并生成批量命名预览</div>
+      <button class="ghost-button" id="chooseBtn" type="button">选择视频</button>
+    </section>
+
+    <section class="workspace" id="workspace" hidden>
+      <section class="panel naming-panel">
+        <div class="panel-heading compact-heading">
+          <div>
+            <span class="section-kicker">01</span>
+            <h2>命名字段</h2>
+          </div>
+          <div class="mini-status" id="analysisStatus">等待分析</div>
+        </div>
+
+        <div class="form-grid form-grid-one-line">
+          <label class="field auto-field">
+            <span>日期 <em>自动</em></span>
+            <input id="date" readonly autocomplete="off" />
+          </label>
+          <label class="field">
+            <span>产品 P</span>
+            <input id="product" list="productHistory" placeholder="例如 A11" autocomplete="off" />
+            <datalist id="productHistory"></datalist>
+          </label>
+          <label class="field">
+            <span>主题 H</span>
+            <input id="theme" list="themeHistory" placeholder="例如 BallSort" autocomplete="off" />
+            <datalist id="themeHistory"></datalist>
+          </label>
+          <label class="field auto-field">
+            <span>时长 VL-S <em>自动</em></span>
+            <input id="duration" value="按素材自动" readonly autocomplete="off" />
+          </label>
+          <label class="field auto-field">
+            <span>尺寸 S <em>自动</em></span>
+            <input id="ratio" value="按素材自动" readonly autocomplete="off" />
+          </label>
+          <label class="field">
+            <span>语言 L <em>自动 / 可覆盖</em></span>
+            <input id="language" list="languageHistory" placeholder="自动识别" autocomplete="off" />
+            <datalist id="languageHistory"></datalist>
+          </label>
+          <label class="field">
+            <span>制作人 D</span>
+            <input id="maker" list="makerHistory" placeholder="Niko" autocomplete="off" />
+            <datalist id="makerHistory"></datalist>
+          </label>
+          <label class="field">
+            <span>制作时长 M</span>
+            <input id="productionTime" list="productionTimeHistory" placeholder="例如 0.1" autocomplete="off" />
+            <datalist id="productionTimeHistory"></datalist>
+          </label>
+        </div>
+
+        <div class="naming-note">
+          <span>批量规则</span>
+          <code>YYMMDD_P-{产品}_H-{主题}[H重复时-01/-02…]_VL-S-{时长}_S-{尺寸}_L-{语言}_D-{制作人}_M-{制作时长}.mp4</code>
+        </div>
+      </section>
+
+      <section class="panel preview-panel">
+        <div class="panel-heading preview-heading">
+          <div>
+            <span class="section-kicker">02</span>
+            <h2>素材命名预览</h2>
+          </div>
+          <div class="preview-tools">
+            <label class="filter-toggle"><input id="onlyIssues" type="checkbox" /> 仅看异常</label>
+            <button class="text-button danger-text" id="clearBtn" type="button">清空</button>
+            <button class="ghost-button compact-button" id="addMoreBtn" type="button">继续添加</button>
+            <span class="count-badge" id="fileCount">0 个文件</span>
+          </div>
+        </div>
+        <div class="preview-summary" id="previewSummary"></div>
+        <div id="videoList" class="video-list"></div>
+      </section>
+
+      <section class="panel compress-panel">
+        <div class="panel-heading compact-heading">
+          <div>
+            <span class="section-kicker">03</span>
+            <h2>压制输出</h2>
+          </div>
+        </div>
+        <div class="compress-layout">
+          <div class="preset-row">
+            <label class="preset-card active">
+              <input type="radio" name="preset" value="standard" checked />
+              <strong>广告标准</strong>
+              <span>H.264 · CRF 20 · AAC 192k</span>
+            </label>
+            <label class="preset-card">
+              <input type="radio" name="preset" value="quality" />
+              <strong>高质量</strong>
+              <span>H.264 · CRF 18 · AAC 192k</span>
+            </label>
+            <label class="preset-card">
+              <input type="radio" name="preset" value="small" />
+              <strong>小体积</strong>
+              <span>H.264 · CRF 26 · AAC 128k</span>
+            </label>
+          </div>
+          <div class="action-row">
+            <div class="notice" id="notice">命名预览确认无误后，视频将上传到当前服务器压制，并按预览名称输出。</div>
+            <button class="primary-button" id="processBtn" type="button">批量命名并压制输出</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel result-panel" id="resultPanel" hidden>
+        <div class="panel-heading compact-heading result-heading">
+          <div>
+            <span class="section-kicker">04</span>
+            <h2>输出结果</h2>
+          </div>
+          <div class="batch-download-box">
+            <span id="batchDownloadMeta">压制完成后可一次下载全部成功文件</span>
+            <button class="primary-button batch-download-button" id="batchDownloadBtn" type="button" disabled>打包下载全部（ZIP）</button>
+          </div>
+        </div>
+        <div id="results" class="results"></div>
+      </section>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
