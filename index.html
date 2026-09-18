@@ -45,11 +45,14 @@
             <input id="product" list="productHistory" placeholder="例如 A11" autocomplete="off" />
             <datalist id="productHistory"></datalist>
           </label>
-          <label class="field">
-            <span>主题 H</span>
+          <div class="field theme-field">
+            <div class="field-heading">
+              <label for="theme">主题 H</label>
+              <button class="translate-button" id="translateThemeBtn" type="button" title="使用浏览器本地模型进行中英互译" aria-label="主题中英互译">中 ⇄ EN</button>
+            </div>
             <input id="theme" list="themeHistory" placeholder="例如 BallSort" autocomplete="off" />
             <datalist id="themeHistory"></datalist>
-          </label>
+          </div>
           <label class="field auto-field">
             <span>时长 VL-S <em>自动</em></span>
             <input id="duration" value="按素材自动" readonly autocomplete="off" />
@@ -126,7 +129,10 @@
           </div>
           <div class="action-row">
             <div class="notice" id="notice">压制时请保持页面打开，速度取决于当前电脑性能。</div>
-            <button class="primary-button" id="processBtn" type="button">批量命名并压制输出</button>
+            <div class="process-actions">
+              <button class="secondary-button" id="compressOnlyBtn" type="button">仅压制（保留原名）</button>
+              <button class="primary-button" id="processBtn" type="button">批量命名并压制</button>
+            </div>
           </div>
         </div>
       </section>

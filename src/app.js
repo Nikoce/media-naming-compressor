@@ -12,6 +12,10 @@ const state = {
   ffmpegLoading: null,
   currentProcessingId: null,
   lastProgressPercent: -1,
+  processing: false,
+  translating: false,
+  activeProcessButton: null,
+  themeTranslators: new Map(),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -21,9 +25,13 @@ const workspace = $('workspace');
 const videoList = $('videoList');
 const analysisStatus = $('analysisStatus');
 const processBtn = $('processBtn');
+const compressOnlyBtn = $('compressOnlyBtn');
+const translateThemeBtn = $('translateThemeBtn');
 const results = $('results');
 const resultPanel = $('resultPanel');
 const onlyIssues = $('onlyIssues');
+const clearBtn = $('clearBtn');
+const addMoreBtn = $('addMoreBtn');
 const fileCount = $('fileCount');
 const previewSummary = $('previewSummary');
 const batchDownloadBtn = $('batchDownloadBtn');
@@ -191,6 +199,39 @@ function nameFor(item) {
   return `${values.date || '日期'}_P-${values.product || '产品'}_H-${values.theme || '主题'}_VL-S-${values.duration || '时长'}_S-${values.ratio || '尺寸'}_L-${values.language || '语言'}_D-${values.maker || '制作人'}_M-${values.productionTime || '制作时长'}.mp4`;
 }
 
+function sourceBaseName(fileName) {
+  const base = String(fileName || '').replace(/\.[^.]+$/, '').trim() || 'output';
+  return base.replace(/[\\/:*?"<>|]/g, '-').replace(/[. ]+$/g, '') || 'output';
+}
+
+function compressionOnlyNames() {
+  const bases = state.files.map((item) => sourceBaseName(item.file.name));
+  const totals = new Map();
+  for (const base of bases) {
+    const key = base.toLowerCase();
+    totals.set(key, (totals.get(key) || 0) + 1);
+  }
+
+  const seen = new Map();
+  const used = new Set();
+  const names = new Map();
+  state.files.forEach((item, index) => {
+    const base = bases[index];
+    const key = base.toLowerCase();
+    const sequence = (seen.get(key) || 0) + 1;
+    seen.set(key, sequence);
+    let suffix = totals.get(key) > 1 ? sequence : 0;
+    let candidate = `${base}${suffix ? `-${String(suffix).padStart(2, '0')}` : ''}.mp4`;
+    while (used.has(candidate.toLowerCase())) {
+      suffix += 1;
+      candidate = `${base}-${String(suffix).padStart(2, '0')}.mp4`;
+    }
+    used.add(candidate.toLowerCase());
+    names.set(item.id, candidate);
+  });
+  return names;
+}
+
 function isProcessing(item) {
   return String(item.status || '').startsWith('正在压制');
 }
@@ -263,7 +304,7 @@ function renderVideoList() {
         </div>
         <div class="item-actions">
           <span class="status-chip ${chip.cls}">${escapeHtml(chip.text)}</span>
-          <button class="remove-button" type="button" data-remove="${index}" title="移除素材" aria-label="移除素材">×</button>
+          <button class="remove-button" type="button" data-remove="${index}" title="移除素材" aria-label="移除素材"${state.processing || state.translating ? ' disabled' : ''}>×</button>
         </div>
       </div>`;
     videoList.appendChild(el);
@@ -287,10 +328,18 @@ function releaseOutputs() {
 }
 
 function invalidateOutputs() {
-  if (state.completedOutputs.length) releaseOutputs();
+  releaseOutputs();
+  for (const item of state.files) {
+    if (item.status === '输出完成' || item.status === '输出失败') {
+      item.status = item.detected ? '分析完成' : '等待分析';
+      item.progress = 0;
+      item.processError = null;
+    }
+  }
 }
 
 function removeFile(index) {
+  if (state.processing || state.translating) return;
   invalidateOutputs();
   state.files.splice(index, 1);
   renderVideoList();
@@ -302,6 +351,7 @@ function removeFile(index) {
 }
 
 function clearFiles() {
+  if (state.processing || state.translating) return;
   releaseOutputs();
   state.files = [];
   renderVideoList();
@@ -372,6 +422,68 @@ function loadHistory() {
   if (!fields.maker.value && state.history.maker?.length) fields.maker.value = state.history.maker[0];
 }
 
+function hasChinese(value) {
+  return /[\u3400-\u9fff]/.test(String(value || ''));
+}
+
+function updateThemeTranslateButton(label = '') {
+  if (label) {
+    translateThemeBtn.textContent = label;
+    return;
+  }
+  const theme = fields.theme.value.trim();
+  translateThemeBtn.textContent = theme ? (hasChinese(theme) ? '中 → EN' : 'EN → 中') : '中 ⇄ EN';
+}
+
+async function translateTheme() {
+  const text = fields.theme.value.trim();
+  if (!text) {
+    window.alert('请先输入主题 H。');
+    return;
+  }
+
+  const TranslatorApi = window.Translator;
+  if (!TranslatorApi?.create) {
+    window.alert('当前浏览器不支持本地中英互译，请使用最新版 Chrome。');
+    return;
+  }
+
+  const sourceLanguage = hasChinese(text) ? 'zh' : 'en';
+  const targetLanguage = sourceLanguage === 'zh' ? 'en' : 'zh';
+  const cacheKey = `${sourceLanguage}-${targetLanguage}`;
+  state.translating = true;
+  syncBusyControls();
+  updateThemeTranslateButton('翻译中…');
+
+  try {
+    let translator = state.themeTranslators.get(cacheKey);
+    if (!translator) {
+      translator = await TranslatorApi.create({
+        sourceLanguage,
+        targetLanguage,
+        monitor(monitor) {
+          monitor.addEventListener('downloadprogress', ({ loaded }) => {
+            if (Number.isFinite(loaded)) updateThemeTranslateButton(`模型 ${Math.round(loaded * 100)}%`);
+          });
+        },
+      });
+      state.themeTranslators.set(cacheKey, translator);
+    }
+    const translated = String(await translator.translate(text))
+      .trim()
+      .replace(/[.!?。！？]+$/g, '');
+    if (!translated) throw new Error('翻译结果为空');
+    fields.theme.value = translated;
+    fields.theme.dispatchEvent(new Event('input', { bubbles: true }));
+  } catch (error) {
+    window.alert(`主题翻译失败：${error.message || error}`);
+  } finally {
+    state.translating = false;
+    syncBusyControls();
+    updateThemeTranslateButton();
+  }
+}
+
 function readBrowserMetadata(file) {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
@@ -414,7 +526,7 @@ async function ensureFFmpeg() {
       state.lastProgressPercent = percent;
       item.progress = percent;
       item.status = `正在压制 ${percent}%`;
-      processBtn.textContent = `正在压制 ${percent}%`;
+      if (state.activeProcessButton) state.activeProcessButton.textContent = `正在压制 ${percent}%`;
       renderVideoList();
     });
     const base = new URL(import.meta.env.BASE_URL, window.location.href);
@@ -468,6 +580,7 @@ async function probeWithFFmpeg(file) {
 }
 
 async function addFiles(fileList) {
+  if (state.processing || state.translating) return;
   fields.date.value = todayYYMMDD();
   const incoming = [...fileList].filter((file) => file.type.startsWith('video/') || /\.(mp4|mov|m4v|avi|mkv|webm|mpeg|mpg)$/i.test(file.name));
   if (!incoming.length) return;
@@ -516,14 +629,28 @@ async function analyzeOne(index) {
   renderVideoList();
 }
 
-function validateBeforeProcess() {
+function validateBeforeProcess(requireNaming) {
   if (!state.files.length) return '请先添加视频素材。';
   if (state.files.some((item) => !item.detected && !item.error)) return '还有素材正在分析，请等待分析完成。';
   const failed = state.files.filter((item) => item.error);
   if (failed.length) return `有 ${failed.length} 个素材分析失败，请先移除或重新添加。`;
-  const issues = state.files.filter((item) => !namingState(item).ok);
-  if (issues.length) return `有 ${issues.length} 个素材命名字段未补全，请先查看黄色提示。`;
+  if (requireNaming) {
+    const issues = state.files.filter((item) => !namingState(item).ok);
+    if (issues.length) return `有 ${issues.length} 个素材命名字段未补全，请先查看黄色提示。`;
+  }
   return '';
+}
+
+function syncBusyControls() {
+  const busy = state.processing || state.translating;
+  const controls = [fileInput, clearBtn, addMoreBtn, processBtn, compressOnlyBtn, translateThemeBtn, ...Object.values(fields)];
+  for (const control of controls) control.disabled = busy;
+  document.querySelectorAll('.preset-card input, .remove-button').forEach((control) => { control.disabled = busy; });
+}
+
+function setProcessingControls(processing) {
+  state.processing = processing;
+  syncBusyControls();
 }
 
 function profileArgs(preset) {
@@ -552,27 +679,34 @@ async function transcodeItem(ffmpeg, item, preset, outputName) {
   }
 }
 
-async function processAll() {
+async function processAll(renameOutput) {
+  if (state.processing || state.translating) return;
   fields.date.value = todayYYMMDD();
-  releaseOutputs();
   renderVideoList();
-  const invalid = validateBeforeProcess();
+  const invalid = validateBeforeProcess(renameOutput);
   if (invalid) {
     window.alert(invalid);
     return;
   }
 
+  releaseOutputs();
   const preset = document.querySelector('input[name="preset"]:checked')?.value || 'standard';
-  processBtn.disabled = true;
-  processBtn.textContent = '正在加载本地引擎…';
+  const activeButton = renameOutput ? processBtn : compressOnlyBtn;
+  const idleLabel = renameOutput ? '批量命名并压制' : '仅压制（保留原名）';
+  const compressionNames = renameOutput ? null : compressionOnlyNames();
+  state.activeProcessButton = activeButton;
+  setProcessingControls(true);
+  activeButton.textContent = '正在加载本地引擎…';
   resultPanel.hidden = false;
 
   let ffmpeg;
   try {
     ffmpeg = await ensureFFmpeg();
   } catch (error) {
-    processBtn.disabled = false;
-    processBtn.textContent = '批量命名并压制输出';
+    state.activeProcessButton = null;
+    setProcessingControls(false);
+    activeButton.textContent = idleLabel;
+    updateThemeTranslateButton();
     window.alert(`本地压制引擎加载失败：${error.message || error}`);
     return;
   }
@@ -582,17 +716,18 @@ async function processAll() {
     state.currentProcessingId = item.id;
     state.lastProgressPercent = -1;
     item.progress = 0;
+    item.processError = null;
     item.status = '正在压制 0%';
-    processBtn.textContent = `正在处理 ${i + 1} / ${state.files.length}`;
+    activeButton.textContent = `正在处理 ${i + 1} / ${state.files.length}`;
     renderVideoList();
-    const finalValues = finalValuesFor(item);
-    const outputName = nameFor(item);
+    const finalValues = renameOutput ? finalValuesFor(item) : null;
+    const outputName = renameOutput ? nameFor(item) : compressionNames.get(item.id);
     try {
       const output = await transcodeItem(ffmpeg, item, preset, outputName);
       item.status = '输出完成';
       item.progress = 100;
       item.processError = null;
-      rememberLocalHistory(finalValues);
+      if (renameOutput) rememberLocalHistory(finalValues);
       state.completedOutputs.push(output);
       appendResult(output);
       updateBatchDownloadState();
@@ -605,8 +740,10 @@ async function processAll() {
   }
 
   state.currentProcessingId = null;
-  processBtn.disabled = false;
-  processBtn.textContent = '批量命名并压制输出';
+  state.activeProcessButton = null;
+  setProcessingControls(false);
+  activeButton.textContent = idleLabel;
+  updateThemeTranslateButton();
 }
 
 function updateBatchDownloadState() {
@@ -655,8 +792,8 @@ function appendResult(output, error = '') {
 }
 
 $('chooseBtn').addEventListener('click', () => fileInput.click());
-$('addMoreBtn').addEventListener('click', () => fileInput.click());
-$('clearBtn').addEventListener('click', clearFiles);
+addMoreBtn.addEventListener('click', () => fileInput.click());
+clearBtn.addEventListener('click', clearFiles);
 fileInput.addEventListener('change', (event) => addFiles(event.target.files));
 ['dragenter', 'dragover'].forEach((eventName) => dropZone.addEventListener(eventName, (event) => {
   event.preventDefault();
@@ -675,6 +812,7 @@ for (const [key, input] of Object.entries(fields)) {
   if (['date', 'duration', 'ratio'].includes(key)) continue;
   input.addEventListener('input', () => {
     invalidateOutputs();
+    if (key === 'theme') updateThemeTranslateButton();
     renderVideoList();
   });
 }
@@ -690,10 +828,16 @@ document.querySelectorAll('.preset-card input').forEach((input) => {
   });
 });
 
-processBtn.addEventListener('click', processAll);
+translateThemeBtn.addEventListener('click', translateTheme);
+processBtn.addEventListener('click', () => processAll(true));
+compressOnlyBtn.addEventListener('click', () => processAll(false));
 batchDownloadBtn.addEventListener('click', downloadBatchZip);
-window.addEventListener('beforeunload', releaseOutputs);
+window.addEventListener('beforeunload', () => {
+  releaseOutputs();
+  for (const translator of state.themeTranslators.values()) translator.destroy?.();
+});
 
 loadHistory();
+updateThemeTranslateButton();
 updateBatchDownloadState();
 renderVideoList();
