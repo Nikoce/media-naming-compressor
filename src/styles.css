@@ -167,6 +167,9 @@ h1 {
 .naming-note > span { flex: 0 0 auto; color: #5d6c78; font-weight: 750; }
 .naming-note code { overflow: hidden; padding: 6px 9px; border: 1px solid #e7ebee; border-radius: 5px; background: #f6f8f9; color: #52616d; text-overflow: ellipsis; white-space: nowrap; }
 
+.preview-panel { transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease; }
+.preview-panel.dragover { border-color: var(--accent); background: #f8fdfa; box-shadow: inset 0 0 0 1px var(--accent); }
+.preview-panel.dragover #addMoreBtn { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
 .preview-heading { margin-bottom: 12px; }
 .preview-tools { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .filter-toggle { display: inline-flex; align-items: center; gap: 6px; color: #657480; font-size: 12px; font-weight: 650; }

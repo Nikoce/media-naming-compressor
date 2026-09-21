@@ -46,6 +46,7 @@ const resultPanel = $('resultPanel');
 const onlyIssues = $('onlyIssues');
 const clearBtn = $('clearBtn');
 const addMoreBtn = $('addMoreBtn');
+const previewPanel = $('previewPanel');
 const fileCount = $('fileCount');
 const previewSummary = $('previewSummary');
 const batchDownloadBtn = $('batchDownloadBtn');
@@ -1020,6 +1021,27 @@ fileInput.addEventListener('change', (event) => addFiles(event.target.files));
 dropZone.addEventListener('drop', (event) => addFiles(event.dataTransfer.files));
 dropZone.addEventListener('click', (event) => {
   if (!event.target.closest('button')) fileInput.click();
+});
+
+function resetAdditionalDropZone() {
+  previewPanel.classList.remove('dragover');
+  addMoreBtn.textContent = '继续添加（可拖入）';
+}
+
+['dragenter', 'dragover'].forEach((eventName) => previewPanel.addEventListener(eventName, (event) => {
+  if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return;
+  event.preventDefault();
+  if (state.processing || state.translating) return;
+  previewPanel.classList.add('dragover');
+  addMoreBtn.textContent = '松开添加素材';
+}));
+previewPanel.addEventListener('dragleave', (event) => {
+  if (!previewPanel.contains(event.relatedTarget)) resetAdditionalDropZone();
+});
+previewPanel.addEventListener('drop', (event) => {
+  event.preventDefault();
+  resetAdditionalDropZone();
+  addFiles(event.dataTransfer.files);
 });
 
 for (const [key, input] of Object.entries(fields)) {
