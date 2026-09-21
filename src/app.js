@@ -965,6 +965,13 @@ function triggerDownload(url, name) {
   anchor.remove();
 }
 
+function batchZipName() {
+  const date = safePart(fields.date.value || todayYYMMDD()) || todayYYMMDD();
+  const product = safePart(fields.product.value) || '产品';
+  const maker = safePart(fields.maker.value) || '制作人';
+  return `${date}-${product}-${maker}.zip`;
+}
+
 async function downloadBatchZip() {
   if (!state.completedOutputs.length) return;
   batchDownloadBtn.disabled = true;
@@ -977,7 +984,7 @@ async function downloadBatchZip() {
       batchDownloadBtn.textContent = `正在打包 ${Math.round(percent)}%`;
     });
     const url = URL.createObjectURL(blob);
-    triggerDownload(url, `${todayYYMMDD()}_batch_${state.completedOutputs.length}files.zip`);
+    triggerDownload(url, batchZipName());
     window.setTimeout(() => URL.revokeObjectURL(url), 30000);
   } catch (error) {
     window.alert(error.message || '打包下载失败');
