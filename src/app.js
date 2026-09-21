@@ -425,7 +425,13 @@ function rememberLocalHistory(values) {
   for (const key of ['product', 'theme', 'maker', 'productionTime', 'language']) {
     const value = safePart(values[key]);
     if (!value) continue;
-    next[key] = [value, ...(next[key] || []).filter((item) => item !== value)].slice(0, 30);
+    const normalizedValue = value.toLowerCase();
+    next[key] = [value, ...(next[key] || []).filter((item) => {
+      if (item.toLowerCase() === normalizedValue) return false;
+      if (key !== 'theme') return true;
+      const sequenceMatch = item.match(/^(.*)-\d{2}$/);
+      return sequenceMatch?.[1].toLowerCase() !== normalizedValue;
+    })].slice(0, 30);
   }
   state.history = next;
   writeLocalHistory(next);
@@ -889,7 +895,7 @@ async function processAll(renameOutput) {
     item.status = '正在压制 0%';
     activeButton.textContent = `正在处理 ${i + 1} / ${state.files.length}`;
     renderVideoList();
-    const finalValues = renameOutput ? finalValuesFor(item) : null;
+    const historyValues = renameOutput ? valuesFor(item) : null;
     const outputName = renameOutput ? nameFor(item) : compressionNames.get(item.id);
     try {
       let output = null;
@@ -921,7 +927,7 @@ async function processAll(renameOutput) {
       item.status = '输出完成';
       item.progress = 100;
       item.processError = null;
-      if (renameOutput) rememberLocalHistory(finalValues);
+      if (renameOutput) rememberLocalHistory(historyValues);
       state.completedOutputs.push(output);
       appendResult(output);
       updateBatchDownloadState();
