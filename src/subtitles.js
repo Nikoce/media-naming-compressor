@@ -16,18 +16,41 @@ const exportButton = $('subtitleExportBtn');
 const namedButton = $('subtitleNameExportBtn');
 const batchExportButton = $('subtitleBatchExportBtn');
 const batchSendButton = $('subtitleBatchSendBtn');
+const styleControls = {
+  fontSize: $('subtitleFontSize'),
+  textColor: $('subtitleTextColor'),
+  outlineColor: $('subtitleOutlineColor'),
+  outline: $('subtitleOutline'),
+  position: $('subtitlePosition'),
+  boxColor: $('subtitleBoxColor'),
+  boxOpacity: $('subtitleBoxOpacity'),
+};
+const styleResetButton = $('subtitleStyleReset');
 let sourceUrl;
 let transcriber;
 let busy = false;
 let selectedFile = null;
 let currentStyle = 'classic';
+let currentOptions = defaultCaptionOptions(currentStyle);
 const items = [];
 let activeIndex = -1;
+
+function defaultCaptionOptions(style) {
+  return {
+    fontSize: 100,
+    textColor: style === 'yellow' ? '#ffe547' : '#ffffff',
+    outlineColor: '#111111',
+    outline: style === 'boxed' ? 0 : 13,
+    position: 'bottom',
+    boxColor: '#000000',
+    boxOpacity: 80,
+  };
+}
 
 function setStatus(message) { status.textContent = message; }
 function setBusy(value) {
   busy = value;
-  for (const element of [fileInput, exportButton, namedButton, cuesInput, ...document.querySelectorAll('.subtitle-style-card')]) element.disabled = value;
+  for (const element of [fileInput, exportButton, namedButton, cuesInput, styleResetButton, ...Object.values(styleControls), ...document.querySelectorAll('.subtitle-style-card')]) element.disabled = value;
   transcribeButton.disabled = value || !selectedFile;
   transcribeAllButton.disabled = value || !items.length;
   const hasCues = items.some((item) => item.cuesText.trim());
@@ -47,44 +70,64 @@ function parseCues(value = cuesInput.value) {
   });
 }
 
-function drawCaption(context, cue, width, height, bandHeight, style) {
-  const fontSize = Math.max(20, Math.round(Math.min(width * 0.052, height * 0.064)));
+function captionFontSize(width, height, options) {
+  return Math.max(12, Math.round(Math.max(20, Math.min(width * 0.052, height * 0.064)) * options.fontSize / 100));
+}
+
+function captionBandHeight(width, height, options) {
+  return Math.min(height, Math.max(80, Math.round(height * 0.22 * options.fontSize / 100), Math.round(captionFontSize(width, height, options) * 3.5)));
+}
+
+function captionY(height, bandHeight, position) {
+  const margin = Math.round(height * 0.03);
+  if (position === 'top') return margin;
+  if (position === 'middle') return Math.max(0, Math.round((height - bandHeight) / 2));
+  return Math.max(0, height - bandHeight - margin);
+}
+
+function hexRgba(hex, opacity) {
+  const values = [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
+  return `rgba(${values.join(',')},${opacity / 100})`;
+}
+
+function drawCaption(context, cue, width, height, bandHeight, style, options) {
+  const fontSize = captionFontSize(width, height, options);
   context.font = `800 ${fontSize}px Arial, "Microsoft YaHei", sans-serif`;
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   const maxWidth = width * 0.88;
-  const chars = Array.from(cue.text);
+  const chunks = cue.text.match(/[A-Za-z0-9]+(?:['’._-][A-Za-z0-9]+)*\s*|./gu) || [];
   const lines = [];
   let line = '';
-  for (const char of chars) {
-    if (context.measureText(line + char).width > maxWidth && line) { lines.push(line); line = ''; }
-    line += char;
+  for (const chunk of chunks) {
+    if (context.measureText(line + chunk).width > maxWidth && line) { lines.push(line.trimEnd()); line = ''; }
+    line += chunk.trimStart();
   }
-  if (line) lines.push(line);
+  if (line) lines.push(line.trimEnd());
   const visibleLines = lines.slice(0, 3);
   const lineHeight = fontSize * 1.22;
   const top = Math.max(fontSize / 2 + 4, (bandHeight - visibleLines.length * lineHeight) / 2 + lineHeight / 2);
   if (style === 'boxed') {
-    context.fillStyle = 'rgba(0, 0, 0, 0.78)';
+    context.fillStyle = hexRgba(options.boxColor, options.boxOpacity);
     context.fillRect(width * 0.045, Math.max(0, top - lineHeight * 0.65), width * 0.91, Math.min(bandHeight, visibleLines.length * lineHeight + 14));
   }
   visibleLines.forEach((text, index) => {
     const y = top + index * lineHeight;
-    context.lineWidth = Math.max(3, fontSize * 0.13);
-    context.strokeStyle = '#111';
+    context.lineWidth = fontSize * options.outline / 100;
+    context.strokeStyle = options.outlineColor;
     context.lineJoin = 'round';
-    if (style !== 'boxed') context.strokeText(text, width / 2, y);
-    context.fillStyle = style === 'yellow' ? '#ffe547' : '#fff';
-    context.fillText(text, width / 2, y);
+    if (options.outline > 0) context.strokeText(text, width / 2, y, maxWidth);
+    context.fillStyle = options.textColor;
+    context.fillText(text, width / 2, y, maxWidth);
   });
 }
 
-async function canvasPng(cue, width, height, style) {
-  const bandHeight = Math.max(80, Math.round(height * 0.22));
+async function canvasPng(cue, width, height, style, options) {
+  const bandHeight = captionBandHeight(width, height, options);
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = bandHeight;
-  drawCaption(canvas.getContext('2d'), cue, width, height, bandHeight, style);
+  drawCaption(canvas.getContext('2d'), cue, width, height, bandHeight, style, options);
   const blob = await new Promise((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('字幕图片生成失败')), 'image/png'));
   return { bytes: new Uint8Array(await blob.arrayBuffer()), bandHeight };
 }
@@ -108,7 +151,7 @@ async function getAudio(ffmpeg, file) {
   }
 }
 
-async function burnCues(ffmpeg, file, cues, style, width = video.videoWidth, height = video.videoHeight) {
+async function burnCues(ffmpeg, file, cues, style, options, width = video.videoWidth, height = video.videoHeight) {
   if (!width || !height) throw new Error('无法读取视频尺寸。');
   const prefix = `caption-${crypto.randomUUID()}`;
   const input = `${prefix}-source${file.name.match(/\.[^.]+$/)?.[0] || '.mp4'}`;
@@ -122,7 +165,7 @@ async function burnCues(ffmpeg, file, cues, style, width = video.videoWidth, hei
     const args = ['-y', '-i', input];
     let bandHeight = 0;
     for (let i = 0; i < cues.length; i += 1) {
-      const png = await canvasPng(cues[i], width, height, style);
+      const png = await canvasPng(cues[i], width, height, style, options);
       bandHeight = png.bandHeight;
       const path = `${prefix}-${i}.png`;
       paths.push(path);
@@ -132,7 +175,7 @@ async function burnCues(ffmpeg, file, cues, style, width = video.videoWidth, hei
     const filters = cues.map((cue, i) => {
       const before = i ? `[v${i}]` : '[0:v]';
       const after = `[v${i + 1}]`;
-      return `${before}[${i + 1}:v]overlay=0:${height - bandHeight - Math.round(height * 0.03)}:enable='between(t,${cue.start},${cue.end})':eof_action=repeat${after}`;
+      return `${before}[${i + 1}:v]overlay=0:${captionY(height, bandHeight, options.position)}:enable='between(t,${cue.start},${cue.end})':eof_action=repeat${after}`;
     }).join(';');
     args.push('-filter_complex', filters, '-map', `[v${cues.length}]`, '-map', '0:a?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', output);
     const code = await ffmpeg.exec(args);
@@ -149,6 +192,20 @@ async function burnCues(ffmpeg, file, cues, style, width = video.videoWidth, hei
 }
 
 export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchSend }) {
+  function syncStyleControls() {
+    for (const [name, control] of Object.entries(styleControls)) control.value = currentOptions[name];
+    $('subtitleFontSizeValue').textContent = `${currentOptions.fontSize}%`;
+    $('subtitleOutlineValue').textContent = `${currentOptions.outline}%`;
+    $('subtitleBoxOpacityValue').textContent = `${currentOptions.boxOpacity}%`;
+    $('subtitleBoxProperties').hidden = currentStyle !== 'boxed';
+  }
+
+  function saveStyleOptions() {
+    if (activeIndex >= 0) items[activeIndex].options = { ...currentOptions };
+    syncStyleControls();
+    updatePreview();
+  }
+
   function renderBatchList() {
     $('subtitleBatchCount').textContent = `${items.length} 个视频`;
     const list = $('subtitleBatchList');
@@ -229,6 +286,8 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     activeIndex = index;
     selectedFile = item.file;
     currentStyle = item.style;
+    currentOptions = { ...item.options };
+    syncStyleControls();
     sourceUrl = URL.createObjectURL(item.file);
     cuesInput.value = item.cuesText;
     editor.hidden = !item.cuesText.trim();
@@ -258,7 +317,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     const incoming = [...fileList].filter((file) => file.type.startsWith('video/') || /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(file.name));
     if (!incoming.length) { setStatus('请选择视频文件'); return; }
     for (const file of incoming) {
-      items.push({ file, cuesText: '', style: currentStyle, status: '待识别', error: '' });
+      items.push({ file, cuesText: '', style: currentStyle, options: { ...currentOptions }, status: '待识别', error: '' });
     }
     $('subtitleFileName').textContent = `${items.length} 个视频已加入队列`;
     setStatus(`${items.length} 个视频已就绪`);
@@ -309,11 +368,11 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     const activeIndex = cues.findIndex((cue) => video.currentTime >= cue.start && video.currentTime <= cue.end);
     const cue = activeIndex >= 0 ? cues[activeIndex] : (editor.hidden ? { text: '字幕效果预览' } : null);
     if (cue) {
-      const bandHeight = Math.max(80, Math.round(height * 0.22));
-      const y = height - bandHeight - Math.round(height * 0.03);
+      const bandHeight = captionBandHeight(width, height, currentOptions);
+      const y = captionY(height, bandHeight, currentOptions.position);
       context.save();
       context.translate(0, y);
-      drawCaption(context, cue, width, height, bandHeight, currentStyle);
+      drawCaption(context, cue, width, height, bandHeight, currentStyle, currentOptions);
       context.restore();
     }
     cueList.querySelectorAll('button').forEach((button, index) => button.classList.toggle('active', index === activeIndex));
@@ -379,13 +438,23 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
   document.querySelectorAll('.subtitle-style-card').forEach((button) => button.addEventListener('click', () => {
     currentStyle = button.dataset.style;
     if (activeIndex >= 0) items[activeIndex].style = currentStyle;
+    const preset = defaultCaptionOptions(currentStyle);
+    currentOptions = { ...currentOptions, textColor: preset.textColor, outlineColor: preset.outlineColor, outline: preset.outline, boxColor: preset.boxColor, boxOpacity: preset.boxOpacity };
     document.querySelectorAll('.subtitle-style-card').forEach((card) => {
       const active = card === button;
       card.classList.toggle('active', active);
       card.setAttribute('aria-pressed', String(active));
     });
-    updatePreview();
+    saveStyleOptions();
   }));
+  for (const [name, control] of Object.entries(styleControls)) control.addEventListener('input', () => {
+    currentOptions[name] = control.type === 'range' ? Number(control.value) : control.value;
+    saveStyleOptions();
+  });
+  styleResetButton.addEventListener('click', () => {
+    currentOptions = defaultCaptionOptions(currentStyle);
+    saveStyleOptions();
+  });
   video.addEventListener('loadedmetadata', () => {
     const ratio = video.videoWidth / video.videoHeight;
     videoFrame.style.aspectRatio = String(ratio);
@@ -448,7 +517,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     setBusy(true);
     try {
       setStatus('正在合成字幕视频…');
-      const blob = await burnCues(await ensureFFmpeg(), file, cues, currentStyle);
+      const blob = await burnCues(await ensureFFmpeg(), file, cues, currentStyle, currentOptions);
       await onExport(blob, file, named);
       setStatus(named ? '已发送到命名页面' : 'MP4 已导出');
     } catch (error) { setStatus('导出失败'); window.alert(error.message || '导出失败'); }
@@ -474,7 +543,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
           setStatus(`${item.status}：${item.file.name}`);
           await activateItem(index);
           renderBatchList();
-          const blob = await burnCues(ffmpeg, item.file, cues, item.style);
+          const blob = await burnCues(ffmpeg, item.file, cues, item.style, item.options);
           outputs.push({ blob, source: item.file });
           item.status = '成品已生成';
         } catch (error) {
@@ -493,4 +562,5 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
   batchExportButton.addEventListener('click', () => processBatch('zip'));
   batchSendButton.addEventListener('click', () => processBatch('naming'));
   window.addEventListener('beforeunload', () => { if (sourceUrl) URL.revokeObjectURL(sourceUrl); });
+  syncStyleControls();
 }
