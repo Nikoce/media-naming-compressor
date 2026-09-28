@@ -235,7 +235,8 @@ h1 {
 .subtitle-results { margin-top: 14px; }
 .subtitle-help { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .subtitle-upload-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: 12px; }
-.subtitle-upload-row .primary-button { min-width: 220px; height: 52px; align-self: center; }
+.subtitle-upload-actions { min-width: 220px; display: grid; align-content: center; gap: 8px; }
+.subtitle-upload-actions button { min-width: 220px; min-height: 44px; }
 .subtitle-dropzone { min-height: 108px; display: flex; align-items: center; justify-content: center; gap: 14px; padding: 16px; border: 1.5px dashed #8fa8bb; border-radius: 9px; background: #f7fafc; color: var(--ink); cursor: pointer; transition: border-color 140ms ease, background 140ms ease; }
 .subtitle-dropzone:hover, .subtitle-dropzone.dragover { border-color: var(--accent); background: #f1faf5; }
 .subtitle-dropzone:focus-visible { outline: 3px solid rgba(40, 95, 192, 0.22); outline-offset: 2px; }
@@ -244,6 +245,16 @@ h1 {
 .subtitle-dropzone strong label { color: var(--blue); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .subtitle-dropzone #subtitleFileName { max-width: 600px; margin-top: 7px; overflow: hidden; color: var(--muted); font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .subtitle-drop-icon { width: 42px; height: 42px; display: grid !important; flex: 0 0 42px; place-items: center; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-size: 26px; font-weight: 600; }
+.subtitle-batch-panel { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.subtitle-batch-heading { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; font-size: 13px; }
+.subtitle-batch-heading span { color: var(--muted); font-size: 12px; }
+.subtitle-batch-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.subtitle-batch-item { min-width: 0; display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; background: #fafcfd; text-align: left; }
+.subtitle-batch-item:hover { border-color: #8eb8a6; }
+.subtitle-batch-item.active { border-color: var(--accent); background: var(--accent-soft); }
+.subtitle-batch-item strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.subtitle-batch-item span { color: var(--muted); font-size: 11px; }
+.subtitle-batch-item.error span { color: var(--danger); }
 .subtitle-workbench { display: grid; grid-template-columns: 280px minmax(0, 1fr); align-items: start; gap: 14px; }
 .subtitle-style-panel, .subtitle-preview-panel { min-width: 0; }
 .subtitle-style-panel .panel-heading, .subtitle-preview-panel .panel-heading { margin-bottom: 10px; }
@@ -269,6 +280,9 @@ h1 {
 .subtitle-cue-list button:hover, .subtitle-cue-list button.active { border-color: #88b6a1; background: var(--accent-soft); }
 .subtitle-cue-list button span { display: block; color: var(--muted); font-family: Consolas, monospace; }
 .subtitle-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 10px; }
+.subtitle-batch-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 9px; margin-top: 16px; padding-top: 15px; border-top: 1px solid var(--line); }
+.subtitle-batch-actions span { margin-right: auto; color: var(--muted); font-size: 11px; }
+.subtitle-batch-actions button { min-width: 170px; }
 .result-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 12px 13px; border: 1px solid var(--line); border-radius: 6px; }
 .result-main { min-width: 0; display: grid; gap: 5px; }
 .result-name { font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
@@ -293,10 +307,12 @@ h1 {
 
 @media (max-width: 850px) {
   .page-nav a { flex: 1; padding: 11px 8px; text-align: center; }
-  .subtitle-upload-row, .subtitle-workbench, .subtitle-editor { grid-template-columns: 1fr; }
+  .subtitle-upload-row, .subtitle-workbench, .subtitle-editor, .subtitle-batch-list { grid-template-columns: 1fr; }
   .subtitle-style-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .subtitle-actions { grid-column: 1; }
   .subtitle-actions { flex-direction: column; }
+  .subtitle-batch-actions { flex-direction: column; align-items: stretch; }
+  .subtitle-batch-actions span { margin: 0 0 3px; }
   .shell { width: min(100% - 20px, 1600px); padding-top: 18px; }
   .topbar { display: block; }
   h1 { font-size: 30px; }

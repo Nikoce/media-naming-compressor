@@ -1075,6 +1075,26 @@ processBtn.addEventListener('click', () => processAll(true));
 compressOnlyBtn.addEventListener('click', () => processAll(false));
 batchDownloadBtn.addEventListener('click', downloadBatchZip);
 const subtitleOutputs = [];
+function subtitleOutputNames(outputs) {
+  const counts = new Map();
+  return outputs.map(({ source }) => {
+    const base = `${sourceBaseName(source.name)}-字幕`;
+    const next = (counts.get(base) || 0) + 1;
+    counts.set(base, next);
+    return `${base}${next > 1 ? `-${String(next).padStart(2, '0')}` : ''}.mp4`;
+  });
+}
+function showSubtitleOutput(blob, outputName, download = true) {
+  const output = { outputName, blob, url: URL.createObjectURL(blob), engine: 'subtitle' };
+  subtitleOutputs.push(output);
+  $('subtitleResultsPanel').hidden = false;
+  const row = document.createElement('div');
+  row.className = 'result-item';
+  row.innerHTML = `<div class="result-name">${escapeHtml(outputName)}</div><button class="download-button" type="button">下载</button>`;
+  row.querySelector('button').addEventListener('click', () => triggerDownload(output.url, outputName));
+  $('subtitleResults').appendChild(row);
+  if (download) triggerDownload(output.url, outputName);
+}
 function syncPage() {
   const subtitles = window.location.hash === '#subtitles';
   $('namingPage').hidden = subtitles;
@@ -1100,15 +1120,31 @@ setupSubtitles({
       fields.product.focus();
       return;
     }
-    const output = { outputName, blob, url: URL.createObjectURL(blob), engine: 'subtitle' };
-    subtitleOutputs.push(output);
-    $('subtitleResultsPanel').hidden = false;
-    const row = document.createElement('div');
-    row.className = 'result-item';
-    row.innerHTML = `<div class="result-name">${escapeHtml(outputName)}</div><button class="download-button" type="button">下载</button>`;
-    row.querySelector('button').addEventListener('click', () => triggerDownload(output.url, outputName));
-    $('subtitleResults').appendChild(row);
-    triggerDownload(output.url, outputName);
+    showSubtitleOutput(blob, outputName);
+  },
+  async onBatchExport(outputs) {
+    const zip = new JSZip();
+    const names = subtitleOutputNames(outputs);
+    outputs.forEach(({ blob }, index) => {
+      zip.file(names[index], blob, { compression: 'STORE' });
+      showSubtitleOutput(blob, names[index], false);
+    });
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    const url = URL.createObjectURL(blob);
+    triggerDownload(url, `自动字幕-${todayYYMMDD()}.zip`);
+    window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+  },
+  async onBatchSend(outputs) {
+    if (state.processing || state.translating) throw new Error('请等待当前批量任务完成。');
+    const names = subtitleOutputNames(outputs);
+    const files = outputs.map(({ blob }, index) => new File([blob], names[index], { type: 'video/mp4' }));
+    const start = state.files.length;
+    await addFiles(files);
+    const failed = state.files.slice(start).filter((item) => item.error);
+    window.location.hash = '#naming';
+    $('notice').textContent = `已发送 ${files.length} 个字幕视频。补全命名字段后，点击「批量命名并压制」导出。`;
+    if (failed.length) throw new Error(`${failed.length} 个字幕视频的信息读取失败，请查看素材列表。`);
+    fields.product.focus();
   },
 });
 window.addEventListener('beforeunload', () => {

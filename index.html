@@ -170,12 +170,13 @@
         <p class="subtitle-help">上传视频，识别语音，再校对字幕与预览效果。首次使用需要下载语音模型。</p>
         <div class="subtitle-upload-row">
           <div class="subtitle-dropzone" id="subtitleDropZone" role="button" tabindex="0" aria-label="拖拽或选择视频">
-            <input id="subtitleFile" type="file" accept="video/*,.mp4,.mov,.mkv,.webm,.avi" hidden />
+            <input id="subtitleFile" type="file" accept="video/*,.mp4,.mov,.mkv,.webm,.avi" multiple hidden />
             <span class="subtitle-drop-icon" aria-hidden="true">↥</span>
-            <div><strong>拖入视频，或 <label for="subtitleFile">选择视频</label></strong><span id="subtitleFileName" aria-live="polite">支持 MP4、MOV、MKV、WebM、AVI</span></div>
+            <div><strong>批量拖入视频，或 <label for="subtitleFile">选择视频</label></strong><span id="subtitleFileName" aria-live="polite">可一次选择多个 MP4、MOV、MKV、WebM、AVI 视频</span></div>
           </div>
-          <button class="primary-button" id="transcribeBtn" type="button" disabled>识别音频并生成字幕</button>
+          <div class="subtitle-upload-actions"><button class="secondary-button" id="transcribeBtn" type="button" disabled>识别当前视频</button><button class="primary-button" id="transcribeAllBtn" type="button" disabled>批量识别字幕</button></div>
         </div>
+        <div class="subtitle-batch-panel" id="subtitleBatchPanel" hidden><div class="subtitle-batch-heading"><strong>视频队列</strong><span id="subtitleBatchCount">0 个视频</span></div><div class="subtitle-batch-list" id="subtitleBatchList"></div></div>
       </section>
       <section class="subtitle-workbench" aria-label="字幕编辑工作区">
         <aside class="panel subtitle-style-panel">
@@ -199,6 +200,7 @@
             <div class="subtitle-cue-list" id="subtitleCueList" aria-label="字幕片段"></div>
             <div class="subtitle-actions"><button class="secondary-button" id="subtitleExportBtn" type="button">单独导出 MP4</button><button class="primary-button" id="subtitleNameExportBtn" type="button">发送到命名页面</button></div>
           </div>
+          <div class="subtitle-batch-actions"><span>批量处理队列中已有字幕的视频；未识别的视频会跳过。</span><button class="secondary-button" id="subtitleBatchSendBtn" type="button" disabled>批量发送到命名</button><button class="primary-button" id="subtitleBatchExportBtn" type="button" disabled>批量导出 MP4（ZIP）</button></div>
         </section>
       </section>
       <section class="panel subtitle-results" id="subtitleResultsPanel" hidden>
