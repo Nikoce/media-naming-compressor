@@ -195,13 +195,24 @@
           </div>
           <div class="subtitle-detail-layout">
           <section class="subtitle-edit-panel">
-            <div class="subtitle-section-heading"><div><span class="section-kicker">校对</span><h3>字幕内容</h3></div><p>点击片段后直接修改</p></div>
+            <div class="subtitle-section-heading subtitle-timeline-heading"><div><span class="section-kicker">校对</span><h3>字幕时间轴</h3></div><button id="subtitleAddCue" class="subtitle-add-cue" type="button" disabled>＋ 在播放头添加字幕</button></div>
             <div class="subtitle-editor" id="subtitleEditor" hidden>
-              <label class="field"><span>识别结果（可修改：开始秒数 | 结束秒数 | 文字）</span><textarea id="subtitleCues" rows="7" spellcheck="false"></textarea></label>
-              <div class="subtitle-cue-list" id="subtitleCueList" aria-label="字幕片段"></div>
+              <textarea id="subtitleCues" hidden aria-hidden="true"></textarea>
+              <div class="subtitle-timeline-toolbar">
+                <span id="subtitleTimecode" class="subtitle-timecode">00:00.00 / 00:00.00</span>
+                <div class="subtitle-zoom-controls" role="group" aria-label="时间轴缩放"><button id="subtitleZoomOut" type="button" aria-label="缩小时间轴">−</button><span id="subtitleZoomValue">100%</span><button id="subtitleZoomIn" type="button" aria-label="放大时间轴">＋</button></div>
+              </div>
+              <div class="subtitle-timeline-viewport" id="subtitleTimelineViewport" aria-label="字幕时间轴" tabindex="0">
+                <div class="subtitle-timeline-content" id="subtitleTimelineContent">
+                  <div class="subtitle-timeline-ruler" id="subtitleTimelineRuler" aria-label="点击时间刻度跳转播放"></div>
+                  <div class="subtitle-timeline-track"><span class="subtitle-track-label">字幕</span><div class="subtitle-timeline-clips" id="subtitleCueList"></div></div>
+                  <div class="subtitle-playhead" id="subtitlePlayhead" aria-hidden="true"></div>
+                </div>
+              </div>
+              <div class="subtitle-timeline-footer"><span>拖动字幕条移动 · 拖动两端调整时间 · 点击文字直接编辑</span><button id="subtitleDeleteCue" type="button" disabled>删除选中字幕</button></div>
               <div class="subtitle-actions"><button class="secondary-button" id="subtitleExportBtn" type="button">导出当前 MP4</button><button class="secondary-button" id="subtitleNameExportBtn" type="button">当前视频发送到命名</button></div>
             </div>
-            <p class="subtitle-editor-empty" id="subtitleEditorEmpty">字幕识别完成后，可在这里逐句修改时间和文字。</p>
+            <p class="subtitle-editor-empty" id="subtitleEditorEmpty">识别完成后，字幕条会按时间出现在这里，可直接拖动和修改。</p>
           </section>
           </div>
           <div class="subtitle-export-panel">

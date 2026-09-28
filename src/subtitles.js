@@ -9,6 +9,12 @@ const dropZone = $('subtitleDropZone');
 const editor = $('subtitleEditor');
 const cuesInput = $('subtitleCues');
 const cueList = $('subtitleCueList');
+const timelineViewport = $('subtitleTimelineViewport');
+const timelineContent = $('subtitleTimelineContent');
+const timelineRuler = $('subtitleTimelineRuler');
+const playhead = $('subtitlePlayhead');
+const addCueButton = $('subtitleAddCue');
+const deleteCueButton = $('subtitleDeleteCue');
 const status = $('subtitleStatus');
 const transcribeButton = $('transcribeBtn');
 const transcribeAllButton = $('transcribeAllBtn');
@@ -34,6 +40,16 @@ let currentStyle = 'classic';
 let currentOptions = defaultCaptionOptions(currentStyle);
 const items = [];
 let activeIndex = -1;
+let selectedCueIndex = -1;
+let timelineZoom = 1;
+let timelineScale = 80;
+
+function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
+function formatTime(seconds) {
+  const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+  return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(Math.floor(safe % 60)).padStart(2, '0')}.${String(Math.floor(safe * 100) % 100).padStart(2, '0')}`;
+}
+function serializeCues(cues) { return cues.map((cue) => `${cue.start.toFixed(2)} | ${cue.end.toFixed(2)} | ${cue.text.trim()}`).join('\n'); }
 
 function defaultCaptionOptions(style) {
   return {
@@ -50,13 +66,18 @@ function defaultCaptionOptions(style) {
 function setStatus(message) { status.textContent = message; }
 function setBusy(value) {
   busy = value;
-  for (const element of [fileInput, exportButton, namedButton, cuesInput, styleResetButton, ...Object.values(styleControls), ...document.querySelectorAll('.subtitle-style-card')]) element.disabled = value;
+  for (const element of [fileInput, exportButton, namedButton, cuesInput, addCueButton, deleteCueButton, $('subtitleZoomIn'), $('subtitleZoomOut'), styleResetButton, ...Object.values(styleControls), ...document.querySelectorAll('.subtitle-style-card')]) element.disabled = value;
   transcribeButton.disabled = value || !selectedFile;
   transcribeAllButton.disabled = value || !items.length;
   const hasCues = items.some((item) => item.cuesText.trim());
   batchExportButton.disabled = value || !hasCues;
   batchSendButton.disabled = value || !hasCues;
   dropZone.classList.toggle('busy', value);
+  if (!value) {
+    addCueButton.disabled = !selectedFile;
+    deleteCueButton.disabled = selectedCueIndex < 0;
+  }
+  cueList.querySelectorAll('button,input').forEach((element) => { element.disabled = value; });
 }
 
 function parseCues(value = cuesInput.value) {
@@ -250,6 +271,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
       if (sourceUrl) URL.revokeObjectURL(sourceUrl);
       sourceUrl = undefined;
       activeIndex = -1;
+      selectedCueIndex = -1;
       selectedFile = null;
       cuesInput.value = '';
       editor.hidden = true;
@@ -264,6 +286,10 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
       $('subtitlePreviewStatus').textContent = '上传视频后可预览';
       $('subtitleFileName').textContent = '支持 MP4、MOV、MKV、WebM、AVI';
       setStatus('等待视频');
+      cueList.replaceChildren();
+      timelineRuler.replaceChildren();
+      deleteCueButton.disabled = true;
+      addCueButton.disabled = true;
     } else if (wasActive) {
       activeIndex = -1;
       activateItem(Math.min(index, items.length - 1)).catch((error) => setStatus(error.message));
@@ -284,6 +310,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     if (activeIndex === index && video.videoWidth && selectedFile === item.file) return Promise.resolve();
     if (sourceUrl) URL.revokeObjectURL(sourceUrl);
     activeIndex = index;
+    selectedCueIndex = -1;
     selectedFile = item.file;
     currentStyle = item.style;
     currentOptions = { ...item.options };
@@ -302,7 +329,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
       card.setAttribute('aria-pressed', String(active));
     });
     renderBatchList();
-    renderCueList();
+    renderTimeline();
     const ready = new Promise((resolve, reject) => {
       video.addEventListener('loadedmetadata', resolve, { once: true });
       video.addEventListener('error', () => reject(new Error(`浏览器无法预览 ${item.file.name}`)), { once: true });
@@ -346,7 +373,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
       cuesInput.value = item.cuesText;
       editor.hidden = false;
       $('subtitleEditorEmpty').hidden = true;
-      renderCueList();
+      renderTimeline();
       video.currentTime = Math.max(0, chunks[0].timestamp[0]);
       updatePreview();
     }
@@ -375,42 +402,160 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
       drawCaption(context, cue, width, height, bandHeight, currentStyle, currentOptions);
       context.restore();
     }
-    cueList.querySelectorAll('button').forEach((button, index) => button.classList.toggle('active', index === activeIndex));
+    cueList.querySelectorAll('.subtitle-cue-clip').forEach((clip, index) => clip.classList.toggle('active', index === activeIndex));
+    playhead.style.left = `${54 + Math.max(0, video.currentTime) * timelineScale}px`;
+    $('subtitleTimecode').textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
     $('subtitlePreviewStatus').textContent = editor.hidden ? '样式预览' : `${cues.length} 条字幕 · 播放或拖动进度查看`;
   }
 
-  function renderCueList() {
+  function timelineDuration(cues = []) {
+    return Math.max(0.1, Number.isFinite(video.duration) ? video.duration : 0, ...cues.map((cue) => cue.end));
+  }
+
+  function saveCues(cues) {
+    cuesInput.value = serializeCues(cues);
+    if (activeIndex >= 0) {
+      items[activeIndex].cuesText = cuesInput.value;
+      items[activeIndex].status = '字幕已修改';
+    }
+    editor.hidden = !cues.length;
+    $('subtitleEditorEmpty').hidden = !!cues.length;
+    renderBatchList();
+    setBusy(false);
+    updatePreview();
+  }
+
+  function selectCue(index, seek = true) {
+    selectedCueIndex = index;
+    cueList.querySelectorAll('.subtitle-cue-clip').forEach((clip, cueIndex) => clip.classList.toggle('selected', cueIndex === index));
+    deleteCueButton.disabled = busy || index < 0;
+    if (seek && index >= 0) {
+      const cue = parseCues()[index];
+      if (cue) video.currentTime = Math.min(cue.start + 0.01, video.duration || cue.start + 0.01);
+      updatePreview();
+    }
+  }
+
+  function renderTimeline() {
     cueList.replaceChildren();
+    timelineRuler.replaceChildren();
     let cues;
     try { cues = parseCues(); } catch { updatePreview(); return; }
+    if (selectedCueIndex >= cues.length) selectedCueIndex = -1;
+    const duration = timelineDuration(cues);
+    const available = Math.max(280, timelineViewport.clientWidth - 54);
+    timelineScale = Math.max(48, available / duration) * timelineZoom;
+    const width = Math.max(available, duration * timelineScale);
+    timelineContent.style.width = `${54 + width}px`;
+    cueList.style.width = `${width}px`;
+    const tickStep = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find((step) => duration / step <= 200 && step * timelineScale >= 70) || 600;
+    for (let second = 0; second <= duration; second += tickStep) {
+      const tick = document.createElement('span');
+      tick.className = 'subtitle-tick';
+      tick.style.left = `${54 + second * timelineScale}px`;
+      const label = document.createElement('span');
+      label.textContent = formatTime(second).slice(0, 5);
+      tick.appendChild(label);
+      timelineRuler.appendChild(tick);
+    }
     cues.forEach((cue, index) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.setAttribute('aria-label', `编辑第 ${index + 1} 条字幕：${cue.text}`);
+      const clip = document.createElement('div');
+      clip.className = `subtitle-cue-clip${index === selectedCueIndex ? ' selected' : ''}`;
+      clip.style.left = `${cue.start * timelineScale}px`;
+      clip.style.width = `${Math.max(12, (cue.end - cue.start) * timelineScale)}px`;
+      clip.setAttribute('aria-label', `第 ${index + 1} 条字幕，${formatTime(cue.start)} 到 ${formatTime(cue.end)}`);
+      const startHandle = document.createElement('button');
+      startHandle.type = 'button';
+      startHandle.className = 'subtitle-cue-handle start';
+      startHandle.setAttribute('aria-label', `调整第 ${index + 1} 条字幕的开始时间`);
+      const grip = document.createElement('button');
+      grip.type = 'button';
+      grip.className = 'subtitle-cue-grip';
+      grip.setAttribute('aria-label', `移动第 ${index + 1} 条字幕`);
       const time = document.createElement('span');
-      time.textContent = `#${index + 1}  ${cue.start.toFixed(2)} – ${cue.end.toFixed(2)}s`;
-      button.append(time, document.createTextNode(cue.text));
-      button.addEventListener('click', () => {
-        video.currentTime = cue.start + 0.01;
-        updatePreview();
-        let offset = 0;
-        let cueIndex = 0;
-        for (const line of cuesInput.value.split('\n')) {
-          if (line.trim()) {
-            if (cueIndex === index) {
-              const secondSeparator = line.indexOf('|', line.indexOf('|') + 1);
-              const textStart = offset + secondSeparator + 1;
-              cuesInput.focus();
-              cuesInput.setSelectionRange(textStart, offset + line.length);
-              break;
-            }
-            cueIndex += 1;
-          }
-          offset += line.length + 1;
-        }
+      time.textContent = `#${index + 1}  ${formatTime(cue.start)} — ${formatTime(cue.end)}`;
+      grip.appendChild(time);
+      const textInput = document.createElement('input');
+      textInput.type = 'text';
+      textInput.className = 'subtitle-cue-text';
+      textInput.value = cue.text;
+      textInput.setAttribute('aria-label', `编辑第 ${index + 1} 条字幕文字`);
+      textInput.disabled = busy;
+      const endHandle = document.createElement('button');
+      endHandle.type = 'button';
+      endHandle.className = 'subtitle-cue-handle end';
+      endHandle.setAttribute('aria-label', `调整第 ${index + 1} 条字幕的结束时间`);
+      for (const handle of [startHandle, grip, endHandle]) handle.disabled = busy;
+      clip.append(startHandle, grip, textInput, endHandle);
+      cueList.appendChild(clip);
+
+      const updateClip = (next) => {
+        cues[index] = next;
+        clip.style.left = `${next.start * timelineScale}px`;
+        clip.style.width = `${Math.max(12, (next.end - next.start) * timelineScale)}px`;
+        time.textContent = `#${index + 1}  ${formatTime(next.start)} — ${formatTime(next.end)}`;
+        clip.setAttribute('aria-label', `第 ${index + 1} 条字幕，${formatTime(next.start)} 到 ${formatTime(next.end)}`);
+        saveCues(cues);
+      };
+      for (const [target, mode] of [[startHandle, 'start'], [grip, 'move'], [endHandle, 'end']]) {
+        target.addEventListener('pointerdown', (event) => {
+          if (busy || event.button !== 0) return;
+          event.preventDefault();
+          video.pause();
+          selectCue(index);
+          const original = { ...cues[index] };
+          const initialX = event.clientX;
+          const limit = timelineDuration(cues);
+          target.setPointerCapture(event.pointerId);
+          clip.classList.add('dragging');
+          const move = (moveEvent) => {
+            const delta = Math.round((moveEvent.clientX - initialX) / timelineScale * 100) / 100;
+            let start = original.start;
+            let end = original.end;
+            if (mode === 'move') {
+              start = clamp(original.start + delta, 0, Math.max(0, limit - (original.end - original.start)));
+              end = start + (original.end - original.start);
+            } else if (mode === 'start') start = clamp(original.start + delta, 0, original.end - 0.1);
+            else end = clamp(original.end + delta, original.start + 0.1, limit);
+            updateClip({ ...original, start: Math.round(start * 100) / 100, end: Math.round(end * 100) / 100 });
+            video.currentTime = Math.min(cues[index].start + 0.01, video.duration || cues[index].start + 0.01);
+          };
+          const finish = () => {
+            target.removeEventListener('pointermove', move);
+            clip.classList.remove('dragging');
+            renderTimeline();
+          };
+          target.addEventListener('pointermove', move);
+          target.addEventListener('pointerup', finish, { once: true });
+          target.addEventListener('pointercancel', finish, { once: true });
+        });
+        target.addEventListener('keydown', (event) => {
+          if (busy || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+          event.preventDefault();
+          selectCue(index, false);
+          const delta = (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 1 : 0.1);
+          const limit = timelineDuration(cues);
+          const original = cues[index];
+          let start = original.start;
+          let end = original.end;
+          if (mode === 'move') { start = clamp(start + delta, 0, Math.max(0, limit - (end - start))); end = start + (original.end - original.start); }
+          else if (mode === 'start') start = clamp(start + delta, 0, end - 0.1);
+          else end = clamp(end + delta, start + 0.1, limit);
+          updateClip({ ...original, start: Math.round(start * 100) / 100, end: Math.round(end * 100) / 100 });
+        });
+      }
+      grip.addEventListener('click', () => selectCue(index));
+      textInput.addEventListener('focus', () => selectCue(index));
+      textInput.addEventListener('input', () => {
+        if (!textInput.value.trim()) return;
+        cues[index] = { ...cues[index], text: textInput.value.replace(/[\r\n]/g, ' ') };
+        saveCues(cues);
       });
-      cueList.appendChild(button);
+      textInput.addEventListener('blur', () => {
+        if (!textInput.value.trim()) textInput.value = cues[index].text;
+      });
     });
+    deleteCueButton.disabled = busy || selectedCueIndex < 0;
     updatePreview();
   }
 
@@ -459,18 +604,43 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     const ratio = video.videoWidth / video.videoHeight;
     videoFrame.style.aspectRatio = String(ratio);
     videoFrame.style.maxWidth = `${Math.min(850, Math.round(480 * ratio))}px`;
-    updatePreview();
+    addCueButton.disabled = busy || !selectedFile;
+    renderTimeline();
   });
   for (const eventName of ['timeupdate', 'seeked', 'play']) video.addEventListener(eventName, updatePreview);
-  cuesInput.addEventListener('input', () => {
-    if (activeIndex >= 0) {
-      items[activeIndex].cuesText = cuesInput.value;
-      items[activeIndex].status = '字幕已修改';
-    }
-    renderCueList();
-    renderBatchList();
-    setBusy(false);
+  timelineRuler.addEventListener('click', (event) => {
+    if (busy || !selectedFile) return;
+    const seconds = (event.clientX - timelineRuler.getBoundingClientRect().left - 54) / timelineScale;
+    video.currentTime = clamp(seconds, 0, Number.isFinite(video.duration) ? video.duration : timelineDuration(parseCues()));
+    updatePreview();
   });
+  addCueButton.addEventListener('click', () => {
+    if (busy || !selectedFile) return;
+    const cues = parseCues();
+    const limit = timelineDuration(cues);
+    const start = Math.round(clamp(video.currentTime, 0, Math.max(0, limit - 0.1)) * 100) / 100;
+    const end = Math.round(Math.min(limit, start + 2) * 100) / 100;
+    cues.push({ start, end, text: '新字幕' });
+    selectedCueIndex = cues.length - 1;
+    saveCues(cues);
+    renderTimeline();
+    cueList.querySelectorAll('.subtitle-cue-text')[selectedCueIndex]?.focus();
+  });
+  deleteCueButton.addEventListener('click', () => {
+    if (busy || selectedCueIndex < 0) return;
+    const cues = parseCues();
+    cues.splice(selectedCueIndex, 1);
+    selectedCueIndex = -1;
+    saveCues(cues);
+    renderTimeline();
+  });
+  for (const [id, factor] of [['subtitleZoomIn', 1.5], ['subtitleZoomOut', 1 / 1.5]]) $(id).addEventListener('click', () => {
+    if (busy) return;
+    timelineZoom = clamp(Math.round(timelineZoom * factor * 100) / 100, 0.5, 8);
+    $('subtitleZoomValue').textContent = `${Math.round(timelineZoom * 100)}%`;
+    renderTimeline();
+  });
+  window.addEventListener('resize', () => { if (selectedFile) renderTimeline(); });
   transcribeButton.addEventListener('click', async () => {
     if (busy || activeIndex < 0) return;
     setBusy(true);

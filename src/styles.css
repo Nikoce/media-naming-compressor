@@ -303,14 +303,44 @@ h1 {
 .subtitle-video-frame video { object-fit: contain; }
 .subtitle-video-frame canvas { pointer-events: none; }
 .subtitle-preview-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; color: #a4b8cb; font-size: 13px; text-align: center; }
-.subtitle-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 210px); gap: 12px; }
-.subtitle-editor textarea { width: 100%; min-height: 172px; padding: 12px; border: 1px solid var(--line); border-radius: 6px; resize: vertical; font: 12px/1.6 Consolas, monospace; }
+.subtitle-timeline-heading { align-items: center; }
+.subtitle-add-cue { padding: 7px 10px; border: 1px solid #a4c6b3; border-radius: 6px; background: #eff8f2; color: var(--accent); font-size: 11px; font-weight: 800; white-space: nowrap; }
+.subtitle-add-cue:disabled { cursor: not-allowed; opacity: .5; }
+.subtitle-editor { display: grid; gap: 11px; min-width: 0; }
+.subtitle-editor[hidden], .subtitle-editor textarea[hidden] { display: none; }
 .subtitle-editor-empty { margin: 0; padding: 20px; border: 1px dashed var(--line-strong); border-radius: 8px; background: #f9fbfa; color: var(--muted); font-size: 12px; text-align: center; }
-.subtitle-cue-list { max-height: 218px; display: grid; align-content: start; gap: 5px; overflow: auto; }
-.subtitle-cue-list button { padding: 7px 8px; border: 1px solid var(--line); border-radius: 5px; background: #f7f9fa; color: var(--ink); font-size: 11px; line-height: 1.4; text-align: left; }
-.subtitle-cue-list button:hover, .subtitle-cue-list button.active { border-color: #88b6a1; background: var(--accent-soft); }
-.subtitle-cue-list button span { display: block; color: var(--muted); font-family: Consolas, monospace; }
-.subtitle-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+.subtitle-timeline-toolbar, .subtitle-timeline-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.subtitle-timecode { color: var(--ink); font: 700 12px/1.4 Consolas, monospace; white-space: nowrap; }
+.subtitle-zoom-controls { display: flex; align-items: center; gap: 7px; color: var(--muted); font: 700 11px Consolas, monospace; }
+.subtitle-zoom-controls button { width: 25px; height: 25px; padding: 0; border: 1px solid var(--line-strong); border-radius: 5px; background: #fff; color: var(--ink); font-size: 17px; line-height: 1; }
+.subtitle-zoom-controls button:disabled { opacity: .45; cursor: not-allowed; }
+.subtitle-timeline-viewport { min-width: 0; overflow-x: auto; overflow-y: hidden; border: 1px solid #cbd9d4; border-radius: 8px; background: #f8faf9; scrollbar-color: #a3b5ad #eef2f0; }
+.subtitle-timeline-viewport:focus-visible { outline: 3px solid rgba(40,95,192,.22); outline-offset: 2px; }
+.subtitle-timeline-content { position: relative; min-height: 122px; }
+.subtitle-timeline-ruler { position: relative; height: 31px; border-bottom: 1px solid #d4dfda; background: repeating-linear-gradient(90deg,#f3f7f5 0,#f3f7f5 9px,#f8faf9 9px,#f8faf9 18px); cursor: crosshair; }
+.subtitle-tick { position: absolute; bottom: 0; height: 9px; border-left: 1px solid #9fb3a8; pointer-events: none; }
+.subtitle-tick span { position: absolute; bottom: 10px; left: 3px; color: #64796f; font: 10px/1 Consolas, monospace; white-space: nowrap; }
+.subtitle-timeline-track { position: relative; height: 90px; background: linear-gradient(180deg,#e6f0eb,#f6faf7); }
+.subtitle-track-label { position: absolute; z-index: 1; inset: 0 auto 0 0; width: 54px; display: grid; place-items: center; border-right: 1px solid #cbd9d4; background: #edf4f0; color: #456257; font-size: 11px; font-weight: 800; }
+.subtitle-timeline-clips { position: relative; height: 100%; margin-left: 54px; }
+.subtitle-cue-clip { position: absolute; top: 12px; height: 64px; min-width: 12px; overflow: hidden; border: 1px solid #478966; border-radius: 6px; background: #d9efe1; color: #174b35; box-shadow: 0 2px 5px rgba(13,60,37,.11); touch-action: none; }
+.subtitle-cue-clip:hover { border-color: #216b4b; background: #d0e9d9; }
+.subtitle-cue-clip.selected { z-index: 3; border-color: #0f6b48; box-shadow: 0 0 0 2px rgba(27,113,73,.22),0 3px 8px rgba(13,60,37,.16); }
+.subtitle-cue-clip.active { background: #c3e8d0; }
+.subtitle-cue-grip { display: block; width: calc(100% - 20px); height: 23px; margin: 0 10px; padding: 3px 2px; overflow: hidden; border: 0; background: transparent; color: #2b6446; cursor: grab; font: 700 10px/16px Consolas, monospace; text-align: left; text-overflow: ellipsis; white-space: nowrap; touch-action: none; user-select: none; }
+.subtitle-cue-clip.dragging .subtitle-cue-grip { cursor: grabbing; }
+.subtitle-cue-text { box-sizing: border-box; width: calc(100% - 20px); height: 30px; margin: 0 10px; padding: 3px 5px; border: 1px solid transparent; border-radius: 3px; background: rgba(255,255,255,.52); color: #173e2c; font: 700 12px/20px Arial,"Microsoft YaHei",sans-serif; white-space: nowrap; }
+.subtitle-cue-text:focus { outline: none; border-color: #438866; background: #fff; }
+.subtitle-cue-handle { position: absolute; z-index: 2; top: 0; bottom: 0; width: 10px; padding: 0; border-top: 0; border-bottom: 0; background: rgba(25,107,70,.17); cursor: ew-resize; touch-action: none; }
+.subtitle-cue-handle::after { content: ''; position: absolute; top: 23px; left: 4px; width: 2px; height: 15px; border-radius: 2px; background: #2a7651; }
+.subtitle-cue-handle.start { left: 0; border-right: 1px solid #6ca582; }
+.subtitle-cue-handle.end { right: 0; border-left: 1px solid #6ca582; }
+.subtitle-playhead { position: absolute; z-index: 4; top: 0; bottom: 0; left: 54px; width: 2px; background: #ea8150; pointer-events: none; }
+.subtitle-playhead::before { content: ''; position: absolute; top: 0; left: -5px; border: 6px solid transparent; border-top: 8px solid #ea8150; }
+.subtitle-timeline-footer { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.subtitle-timeline-footer button { flex: 0 0 auto; padding: 4px 0; border: 0; background: none; color: #a33f38; font-size: 10px; font-weight: 700; }
+.subtitle-timeline-footer button:disabled { color: #9aaba2; cursor: not-allowed; }
+.subtitle-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
 .subtitle-actions button { min-width: 154px; }
 .subtitle-export-panel { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 19px; padding-top: 16px; border-top: 1px solid var(--line); }
 .subtitle-export-panel h3 { margin-top: 4px; }
