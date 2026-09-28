@@ -162,10 +162,6 @@
     </div>
 
     <section id="subtitlePage" hidden>
-      <header class="subtitle-page-header">
-        <div><span class="section-kicker">AUTO CAPTIONS · 自动字幕</span><h2>视频字幕工作台</h2><p>按顺序添加视频、识别语音、校对字幕并导出成品。</p></div>
-        <div class="mini-status" id="subtitleStatus" role="status" aria-live="polite">等待视频</div>
-      </header>
       <div class="subtitle-layout">
         <aside class="subtitle-flow" aria-label="字幕处理流程">
           <section class="panel subtitle-upload-panel">
@@ -183,6 +179,7 @@
           <section class="panel subtitle-recognition-panel">
             <div class="subtitle-step-heading"><span class="subtitle-step-number">03</span><div><h3>识别语音</h3><p>批量识别会按队列顺序处理。</p></div></div>
             <div class="subtitle-upload-actions"><button class="primary-button" id="transcribeAllBtn" type="button" disabled>批量识别字幕</button><button class="secondary-button" id="transcribeBtn" type="button" disabled>只识别当前视频</button></div>
+            <div class="subtitle-flow-status" id="subtitleStatus" role="status" aria-live="polite">等待视频</div>
             <p class="subtitle-model-note">首次识别需要下载语音模型，请保持页面打开。</p>
           </section>
         </aside>
