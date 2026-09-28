@@ -2,6 +2,7 @@ import './styles.css';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
 import JSZip from 'jszip';
+import { setupSubtitles } from './subtitles.js';
 import {
   ALL_FORMATS,
   BlobSource,
@@ -1004,7 +1005,7 @@ async function downloadBatchZip() {
 function appendResult(output, error = '') {
   const el = document.createElement('div');
   el.className = `result-item${error ? ' error' : ''}`;
-  const engineLabel = output.engine === 'webcodecs' ? 'WebCodecs 极速' : 'FFmpeg 兼容';
+  const engineLabel = output.engine === 'subtitle' ? '自动字幕' : (output.engine === 'webcodecs' ? 'WebCodecs 极速' : 'FFmpeg 兼容');
   el.innerHTML = error
     ? `<div class="result-name">${escapeHtml(`${output.outputName} · ${error}`)}</div>`
     : `<div class="result-main"><div class="result-name">${escapeHtml(output.outputName)}</div><div class="result-meta ${output.engine === 'webcodecs' ? 'fast' : 'fallback'}">${engineLabel}</div></div><button class="download-button" type="button">下载</button>`;
@@ -1012,7 +1013,6 @@ function appendResult(output, error = '') {
   results.appendChild(el);
 }
 
-$('chooseBtn').addEventListener('click', () => fileInput.click());
 addMoreBtn.addEventListener('click', () => fileInput.click());
 clearBtn.addEventListener('click', clearFiles);
 fileInput.addEventListener('change', (event) => addFiles(event.target.files));
@@ -1026,7 +1026,7 @@ fileInput.addEventListener('change', (event) => addFiles(event.target.files));
 }));
 dropZone.addEventListener('drop', (event) => addFiles(event.dataTransfer.files));
 dropZone.addEventListener('click', (event) => {
-  if (!event.target.closest('button')) fileInput.click();
+  if (!event.target.closest('button, label')) fileInput.click();
 });
 
 function resetAdditionalDropZone() {
@@ -1074,8 +1074,46 @@ translateThemeBtn.addEventListener('click', translateTheme);
 processBtn.addEventListener('click', () => processAll(true));
 compressOnlyBtn.addEventListener('click', () => processAll(false));
 batchDownloadBtn.addEventListener('click', downloadBatchZip);
+const subtitleOutputs = [];
+function syncPage() {
+  const subtitles = window.location.hash === '#subtitles';
+  $('namingPage').hidden = subtitles;
+  $('subtitlePage').hidden = !subtitles;
+  $('namingNav').classList.toggle('active', !subtitles);
+  $('subtitleNav').classList.toggle('active', subtitles);
+  document.title = subtitles ? '自动字幕｜素材工作台' : '批量命名与压制｜素材工作台';
+}
+window.addEventListener('hashchange', syncPage);
+syncPage();
+setupSubtitles({
+  ensureFFmpeg,
+  async onExport(blob, source, named) {
+    if (state.processing || state.translating) throw new Error('请等待当前批量任务完成。');
+    const outputName = `${sourceBaseName(source.name)}-字幕.mp4`;
+    if (named) {
+      const subtitled = new File([blob], outputName, { type: 'video/mp4' });
+      await addFiles([subtitled]);
+      const item = state.files.at(-1);
+      if (item?.error) throw new Error(item.error);
+      window.location.hash = '#naming';
+      $('notice').textContent = '字幕视频已加入素材列表。补全命名字段后，点击「批量命名并压制」导出。';
+      fields.product.focus();
+      return;
+    }
+    const output = { outputName, blob, url: URL.createObjectURL(blob), engine: 'subtitle' };
+    subtitleOutputs.push(output);
+    $('subtitleResultsPanel').hidden = false;
+    const row = document.createElement('div');
+    row.className = 'result-item';
+    row.innerHTML = `<div class="result-name">${escapeHtml(outputName)}</div><button class="download-button" type="button">下载</button>`;
+    row.querySelector('button').addEventListener('click', () => triggerDownload(output.url, outputName));
+    $('subtitleResults').appendChild(row);
+    triggerDownload(output.url, outputName);
+  },
+});
 window.addEventListener('beforeunload', () => {
   releaseOutputs();
+  for (const output of subtitleOutputs) URL.revokeObjectURL(output.url);
   for (const translator of state.themeTranslators.values()) translator.destroy?.();
 });
 

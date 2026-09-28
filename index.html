@@ -5,25 +5,32 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#176b52" />
   <link rel="icon" href="data:," />
-  <title>素材批量命名与压制</title>
+  <title>素材工作台｜命名与自动字幕</title>
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
       <div>
         <div class="eyebrow">LOCAL MEDIA WORKBENCH</div>
-        <h1>素材批量命名与压制</h1>
-        <p>视频不上传，命名、压制和 ZIP 打包全部在当前浏览器完成。</p>
+        <h1>素材工作台</h1>
+        <p>批量命名、视频压制与自动字幕，都在当前浏览器完成。</p>
       </div>
       <div class="local-badge"><span></span>零费用 · 本地处理</div>
     </header>
+
+    <nav class="page-nav" aria-label="工具页面">
+      <a href="#naming" id="namingNav">批量命名与压制</a>
+      <a href="#subtitles" id="subtitleNav">自动字幕</a>
+    </nav>
+
+    <div id="namingPage">
 
     <section class="drop-card" id="dropZone">
       <input id="fileInput" type="file" accept="video/*,.mkv,.avi,.webm,.mov,.m4v" multiple hidden />
       <div class="drop-icon" aria-hidden="true">＋</div>
       <div class="drop-title">拖入视频文件</div>
       <div class="drop-copy">支持批量选择，文件只保留在当前浏览器</div>
-      <button class="ghost-button" id="chooseBtn" type="button">选择视频</button>
+      <label class="ghost-button file-choose-button" id="chooseBtn" for="fileInput">选择视频</label>
     </section>
 
     <section class="workspace" id="workspace" hidden>
@@ -150,6 +157,31 @@
           </div>
         </div>
         <div id="results" class="results"></div>
+      </section>
+    </section>
+    </div>
+
+    <section id="subtitlePage" hidden>
+      <section class="panel subtitle-panel" id="subtitlePanel">
+        <div class="panel-heading compact-heading">
+          <div><span class="section-kicker">自动字幕</span><h2>视频字幕工作台</h2></div>
+          <div class="mini-status" id="subtitleStatus">等待视频</div>
+        </div>
+        <p class="subtitle-help">上传视频、识别语音、校对字幕并选择样式。首次识别需要下载语音模型。</p>
+        <div class="subtitle-grid">
+          <div class="field"><span>视频</span><input id="subtitleFile" type="file" accept="video/*,.mp4,.mov,.mkv,.webm,.avi" hidden /><label class="ghost-button file-choose-button" for="subtitleFile">选择视频</label><small id="subtitleFileName">尚未选择视频</small></div>
+          <label class="field"><span>字幕样式</span><select id="subtitleStyle"><option value="classic">经典白字黑边</option><option value="boxed">深色底框</option><option value="yellow">醒目黄字</option></select></label>
+          <button class="secondary-button" id="transcribeBtn" type="button">识别音频并生成字幕</button>
+        </div>
+        <video id="subtitleVideo" controls playsinline hidden></video>
+        <div class="subtitle-editor" id="subtitleEditor" hidden>
+          <label class="field"><span>字幕内容（每行：开始秒数 | 结束秒数 | 文字，可直接修改）</span><textarea id="subtitleCues" rows="8" spellcheck="false"></textarea></label>
+          <div class="subtitle-actions"><button class="secondary-button" id="subtitleExportBtn" type="button">单独导出 MP4</button><button class="primary-button" id="subtitleNameExportBtn" type="button">发送到命名页面</button></div>
+        </div>
+      </section>
+      <section class="panel subtitle-results" id="subtitleResultsPanel" hidden>
+        <div class="panel-heading compact-heading"><h2>字幕导出结果</h2></div>
+        <div id="subtitleResults" class="results"></div>
       </section>
     </section>
   </main>

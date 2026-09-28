@@ -5,6 +5,7 @@ public/ffmpeg/
 .env.*
 !.env.example
 .DS_Store
+.playwright-cli/
 uploads/
 outputs/
 output/
