@@ -237,6 +237,9 @@ h1 {
 .subtitle-step-heading { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 15px; }
 .subtitle-step-number { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border-radius: 8px; background: #e7f3ed; color: var(--accent); font: 800 12px/1 Consolas, monospace; }
 .subtitle-step-heading h3, .subtitle-section-heading h3, .subtitle-preview-heading h3, .subtitle-export-panel h3 { margin: 0; font-size: 16px; line-height: 1.3; }
+.subtitle-step-heading h3, .subtitle-section-heading h3, .subtitle-preview-heading h3, .subtitle-export-panel h3,
+.subtitle-style-card strong, .subtitle-dropzone strong, .subtitle-dropzone label,
+#subtitlePage .primary-button, #subtitlePage .secondary-button { word-break: keep-all; white-space: nowrap; }
 .subtitle-step-heading p, .subtitle-section-heading p, .subtitle-export-panel p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .subtitle-dropzone { min-height: 158px; display: grid; align-content: center; justify-items: center; gap: 10px; padding: 16px; border: 1.5px dashed #94b6aa; border-radius: 10px; background: #f8fcfa; color: var(--ink); cursor: pointer; text-align: center; transition: border-color 140ms ease, background 140ms ease; }
 .subtitle-dropzone:hover, .subtitle-dropzone.dragover { border-color: var(--accent); background: #eef8f2; }
@@ -261,7 +264,7 @@ h1 {
 .subtitle-remove-button:focus-visible { outline: 3px solid rgba(40, 95, 192, 0.22); }
 .subtitle-upload-actions { display: grid; gap: 8px; }
 .subtitle-upload-actions button { width: 100%; min-width: 0; min-height: 42px; }
-.subtitle-flow-status { margin-top: 12px; padding: 8px 10px; border-radius: 6px; background: #eef7f2; color: var(--accent); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.subtitle-flow-status { margin-top: 12px; padding: 8px 10px; overflow: hidden; border-radius: 6px; background: #eef7f2; color: var(--accent); font-size: 11px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
 .subtitle-model-note { margin: 12px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .subtitle-preview-heading, .subtitle-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .subtitle-preview-heading h3 { max-width: 550px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -327,6 +330,16 @@ h1 {
   .subtitle-editor { grid-template-columns: 1fr; }
   .subtitle-cue-list { max-height: 150px; }
   .subtitle-actions { grid-column: 1; }
+}
+
+@media (max-width: 960px) {
+  .subtitle-layout { grid-template-columns: 1fr; }
+  .subtitle-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .subtitle-recognition-panel { grid-column: 1 / -1; }
+  .subtitle-upload-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .subtitle-export-panel { flex-direction: column; align-items: stretch; }
+  .subtitle-batch-actions { justify-content: stretch; }
+  .subtitle-batch-actions button { flex: 1; min-width: 0; }
 }
 
 @media (max-width: 850px) {

@@ -327,10 +327,29 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     cues.forEach((cue, index) => {
       const button = document.createElement('button');
       button.type = 'button';
+      button.setAttribute('aria-label', `编辑第 ${index + 1} 条字幕：${cue.text}`);
       const time = document.createElement('span');
       time.textContent = `#${index + 1}  ${cue.start.toFixed(2)} – ${cue.end.toFixed(2)}s`;
       button.append(time, document.createTextNode(cue.text));
-      button.addEventListener('click', () => { video.currentTime = cue.start + 0.01; updatePreview(); video.focus(); });
+      button.addEventListener('click', () => {
+        video.currentTime = cue.start + 0.01;
+        updatePreview();
+        let offset = 0;
+        let cueIndex = 0;
+        for (const line of cuesInput.value.split('\n')) {
+          if (line.trim()) {
+            if (cueIndex === index) {
+              const secondSeparator = line.indexOf('|', line.indexOf('|') + 1);
+              const textStart = offset + secondSeparator + 1;
+              cuesInput.focus();
+              cuesInput.setSelectionRange(textStart, offset + line.length);
+              break;
+            }
+            cueIndex += 1;
+          }
+          offset += line.length + 1;
+        }
+      });
       cueList.appendChild(button);
     });
     updatePreview();
