@@ -230,13 +230,16 @@ h1 {
 .page-nav a:hover { background: #f2f7f4; color: var(--accent); }
 .page-nav a.active { background: var(--accent); color: #fff; }
 .file-choose-button { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; cursor: pointer; }
-.subtitle-grid .field small { display: block; max-width: 320px; margin-top: 6px; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+#subtitlePage { width: min(100%, 1180px); margin: 0 auto; }
 .subtitle-panel { margin: 18px 0; }
 .subtitle-results { margin-top: 16px; }
 .subtitle-help { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
-.subtitle-grid { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(180px, 240px) auto; align-items: end; gap: 12px; }
-.subtitle-grid .field input, .subtitle-grid .field select { width: 100%; min-height: 42px; }
-.subtitle-grid .secondary-button { min-height: 42px; }
+.subtitle-grid { display: grid; grid-template-columns: minmax(240px, 1fr) 240px max-content; align-items: end; gap: 12px; }
+.subtitle-grid .field { gap: 6px; }
+.subtitle-grid .file-choose-button { width: 100%; height: 42px; }
+.subtitle-grid .field select { width: 100%; height: 42px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--ink); font: inherit; }
+.subtitle-grid .secondary-button { height: 42px; }
+.subtitle-file-name { grid-column: 1; grid-row: 2; margin-top: -4px; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 #subtitleVideo { display: block; width: min(100%, 720px); max-height: 420px; margin: 16px 0; border-radius: 7px; background: #111; }
 #subtitleVideo[hidden] { display: none; }
 .subtitle-editor { margin-top: 16px; }
@@ -267,6 +270,10 @@ h1 {
 @media (max-width: 850px) {
   .page-nav a { flex: 1; padding: 11px 8px; text-align: center; }
   .subtitle-grid { grid-template-columns: 1fr; }
+  .subtitle-file-field { grid-row: 1; }
+  .subtitle-file-name { grid-row: 2; }
+  .subtitle-style-field { grid-row: 3; }
+  .subtitle-transcribe { grid-row: 4; width: 100%; }
   .subtitle-actions { flex-direction: column; }
   .shell { width: min(100% - 20px, 1600px); padding-top: 18px; }
   .topbar { display: block; }

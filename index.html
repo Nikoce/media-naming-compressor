@@ -169,9 +169,10 @@
         </div>
         <p class="subtitle-help">上传视频、识别语音、校对字幕并选择样式。首次识别需要下载语音模型。</p>
         <div class="subtitle-grid">
-          <div class="field"><span>视频</span><input id="subtitleFile" type="file" accept="video/*,.mp4,.mov,.mkv,.webm,.avi" hidden /><label class="ghost-button file-choose-button" for="subtitleFile">选择视频</label><small id="subtitleFileName">尚未选择视频</small></div>
-          <label class="field"><span>字幕样式</span><select id="subtitleStyle"><option value="classic">经典白字黑边</option><option value="boxed">深色底框</option><option value="yellow">醒目黄字</option></select></label>
-          <button class="secondary-button" id="transcribeBtn" type="button">识别音频并生成字幕</button>
+          <div class="field subtitle-file-field"><span>视频</span><input id="subtitleFile" type="file" accept="video/*,.mp4,.mov,.mkv,.webm,.avi" hidden /><label class="ghost-button file-choose-button" for="subtitleFile">选择视频</label></div>
+          <label class="field subtitle-style-field"><span>字幕样式</span><select id="subtitleStyle"><option value="classic">经典白字黑边</option><option value="boxed">深色底框</option><option value="yellow">醒目黄字</option></select></label>
+          <button class="secondary-button subtitle-transcribe" id="transcribeBtn" type="button">识别音频并生成字幕</button>
+          <div class="subtitle-file-name" id="subtitleFileName" aria-live="polite">尚未选择视频</div>
         </div>
         <video id="subtitleVideo" controls playsinline hidden></video>
         <div class="subtitle-editor" id="subtitleEditor" hidden>
