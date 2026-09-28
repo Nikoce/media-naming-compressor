@@ -3,8 +3,12 @@ import { fetchFile } from '@ffmpeg/util';
 const $ = (id) => document.getElementById(id);
 const fileInput = $('subtitleFile');
 const video = $('subtitleVideo');
+const videoFrame = $('subtitleVideoFrame');
+const previewCanvas = $('subtitlePreviewCanvas');
+const dropZone = $('subtitleDropZone');
 const editor = $('subtitleEditor');
 const cuesInput = $('subtitleCues');
+const cueList = $('subtitleCueList');
 const status = $('subtitleStatus');
 const transcribeButton = $('transcribeBtn');
 const exportButton = $('subtitleExportBtn');
@@ -12,11 +16,14 @@ const namedButton = $('subtitleNameExportBtn');
 let sourceUrl;
 let transcriber;
 let busy = false;
+let selectedFile = null;
+let currentStyle = 'classic';
 
 function setStatus(message) { status.textContent = message; }
 function setBusy(value) {
   busy = value;
-  for (const element of [fileInput, transcribeButton, exportButton, namedButton, cuesInput, $('subtitleStyle')]) element.disabled = value;
+  for (const element of [fileInput, transcribeButton, exportButton, namedButton, cuesInput, ...document.querySelectorAll('.subtitle-style-card')]) element.disabled = value;
+  dropZone.classList.toggle('busy', value);
 }
 
 function parseCues() {
@@ -30,12 +37,7 @@ function parseCues() {
   });
 }
 
-async function canvasPng(cue, width, height, style) {
-  const bandHeight = Math.max(80, Math.round(height * 0.22));
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = bandHeight;
-  const context = canvas.getContext('2d');
+function drawCaption(context, cue, width, height, bandHeight, style) {
   const fontSize = Math.max(20, Math.round(Math.min(width * 0.052, height * 0.064)));
   context.font = `800 ${fontSize}px Arial, "Microsoft YaHei", sans-serif`;
   context.textAlign = 'center';
@@ -65,6 +67,14 @@ async function canvasPng(cue, width, height, style) {
     context.fillStyle = style === 'yellow' ? '#ffe547' : '#fff';
     context.fillText(text, width / 2, y);
   });
+}
+
+async function canvasPng(cue, width, height, style) {
+  const bandHeight = Math.max(80, Math.round(height * 0.22));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = bandHeight;
+  drawCaption(canvas.getContext('2d'), cue, width, height, bandHeight, style);
   const blob = await new Promise((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('字幕图片生成失败')), 'image/png'));
   return { bytes: new Uint8Array(await blob.arrayBuffer()), bandHeight };
 }
@@ -131,22 +141,116 @@ async function burnCues(ffmpeg, file, cues, style) {
 }
 
 export function setupSubtitles({ ensureFFmpeg, onExport }) {
-  fileInput.addEventListener('change', () => {
+  function updatePreview() {
+    if (!video.videoWidth || !video.videoHeight || !selectedFile) return;
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+    if (previewCanvas.width !== width || previewCanvas.height !== height) {
+      previewCanvas.width = width;
+      previewCanvas.height = height;
+    }
+    const context = previewCanvas.getContext('2d');
+    context.clearRect(0, 0, width, height);
+    let cues = [];
+    try { cues = parseCues(); } catch { $('subtitlePreviewStatus').textContent = '字幕格式需检查'; return; }
+    const activeIndex = cues.findIndex((cue) => video.currentTime >= cue.start && video.currentTime <= cue.end);
+    const cue = activeIndex >= 0 ? cues[activeIndex] : (editor.hidden ? { text: '字幕效果预览' } : null);
+    if (cue) {
+      const bandHeight = Math.max(80, Math.round(height * 0.22));
+      const y = height - bandHeight - Math.round(height * 0.03);
+      context.save();
+      context.translate(0, y);
+      drawCaption(context, cue, width, height, bandHeight, currentStyle);
+      context.restore();
+    }
+    cueList.querySelectorAll('button').forEach((button, index) => button.classList.toggle('active', index === activeIndex));
+    $('subtitlePreviewStatus').textContent = editor.hidden ? '样式预览' : `${cues.length} 条字幕 · 播放或拖动进度查看`;
+  }
+
+  function renderCueList() {
+    cueList.replaceChildren();
+    let cues;
+    try { cues = parseCues(); } catch { updatePreview(); return; }
+    cues.forEach((cue, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      const time = document.createElement('span');
+      time.textContent = `#${index + 1}  ${cue.start.toFixed(2)} – ${cue.end.toFixed(2)}s`;
+      button.append(time, document.createTextNode(cue.text));
+      button.addEventListener('click', () => { video.currentTime = cue.start + 0.01; updatePreview(); video.focus(); });
+      cueList.appendChild(button);
+    });
+    updatePreview();
+  }
+
+  function chooseFile(file) {
+    if (busy || !file) return;
+    if (!file.type.startsWith('video/') && !/\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(file.name)) {
+      setStatus('请选择视频文件');
+      return;
+    }
     if (sourceUrl) URL.revokeObjectURL(sourceUrl);
-    sourceUrl = fileInput.files?.[0] ? URL.createObjectURL(fileInput.files[0]) : null;
-    $('subtitleFileName').textContent = fileInput.files?.[0]?.name || '尚未选择视频';
-    video.hidden = !sourceUrl;
-    video.src = sourceUrl || '';
+    selectedFile = file;
+    sourceUrl = URL.createObjectURL(file);
+    $('subtitleFileName').textContent = `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB`;
+    $('subtitlePreviewEmpty').hidden = true;
+    video.hidden = false;
+    previewCanvas.hidden = false;
+    video.src = sourceUrl;
+    video.load();
     cuesInput.value = '';
     editor.hidden = true;
-    setStatus(sourceUrl ? '视频已就绪' : '等待视频');
+    cueList.replaceChildren();
+    transcribeButton.disabled = false;
+    setStatus('视频已就绪');
+    $('subtitlePreviewStatus').textContent = '正在读取视频…';
+  }
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = '';
+    chooseFile(file);
   });
+  dropZone.addEventListener('click', (event) => { if (!event.target.closest('label') && !busy) fileInput.click(); });
+  dropZone.addEventListener('keydown', (event) => {
+    if ((event.key === 'Enter' || event.key === ' ') && !busy) { event.preventDefault(); fileInput.click(); }
+  });
+  for (const eventName of ['dragenter', 'dragover']) dropZone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    if (!busy) dropZone.classList.add('dragover');
+  });
+  dropZone.addEventListener('dragleave', (event) => {
+    if (!dropZone.contains(event.relatedTarget)) dropZone.classList.remove('dragover');
+  });
+  dropZone.addEventListener('drop', (event) => {
+    event.preventDefault();
+    dropZone.classList.remove('dragover');
+    const file = [...event.dataTransfer.files].find((item) => item.type.startsWith('video/') || /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(item.name));
+    if (file) chooseFile(file); else setStatus('请拖入视频文件');
+  });
+  document.querySelectorAll('.subtitle-style-card').forEach((button) => button.addEventListener('click', () => {
+    currentStyle = button.dataset.style;
+    document.querySelectorAll('.subtitle-style-card').forEach((card) => {
+      const active = card === button;
+      card.classList.toggle('active', active);
+      card.setAttribute('aria-pressed', String(active));
+    });
+    updatePreview();
+  }));
+  video.addEventListener('loadedmetadata', () => {
+    const ratio = video.videoWidth / video.videoHeight;
+    videoFrame.style.aspectRatio = String(ratio);
+    videoFrame.style.maxWidth = `${Math.min(850, Math.round(480 * ratio))}px`;
+    updatePreview();
+  });
+  for (const eventName of ['timeupdate', 'seeked', 'play']) video.addEventListener(eventName, updatePreview);
+  cuesInput.addEventListener('input', renderCueList);
   transcribeButton.addEventListener('click', async () => {
-    if (busy || !fileInput.files?.[0]) { if (!busy) window.alert('请先选择视频。'); return; }
+    if (busy || !selectedFile) return;
     setBusy(true);
     try {
       setStatus('正在提取音频…');
-      const audio = await getAudio(await ensureFFmpeg(), fileInput.files[0]);
+      const audio = await getAudio(await ensureFFmpeg(), selectedFile);
       setStatus('正在加载语音模型…');
       if (!transcriber) {
         const { pipeline } = await import('@huggingface/transformers');
@@ -158,13 +262,16 @@ export function setupSubtitles({ ensureFFmpeg, onExport }) {
       if (!chunks.length) throw new Error('没有识别到可用的语音字幕。');
       cuesInput.value = chunks.map((chunk) => `${Math.max(0, chunk.timestamp[0]).toFixed(2)} | ${(chunk.timestamp[1] ?? chunk.timestamp[0] + 2).toFixed(2)} | ${chunk.text.trim().replace(/\s+/g, ' ')}`).join('\n');
       editor.hidden = false;
+      renderCueList();
+      video.currentTime = Math.max(0, chunks[0].timestamp[0]);
+      updatePreview();
       setStatus(`已生成 ${chunks.length} 条字幕`);
     } catch (error) { setStatus('识别失败'); window.alert(error.message || '语音识别失败'); }
     finally { setBusy(false); }
   });
   async function exportVideo(named) {
     if (busy) return;
-    const file = fileInput.files?.[0];
+    const file = selectedFile;
     if (!file) return window.alert('请先选择视频。');
     let cues;
     try {
@@ -174,7 +281,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport }) {
     setBusy(true);
     try {
       setStatus('正在合成字幕视频…');
-      const blob = await burnCues(await ensureFFmpeg(), file, cues, $('subtitleStyle').value);
+      const blob = await burnCues(await ensureFFmpeg(), file, cues, currentStyle);
       await onExport(blob, file, named);
       setStatus(named ? '已发送到命名页面' : 'MP4 已导出');
     } catch (error) { setStatus('导出失败'); window.alert(error.message || '导出失败'); }

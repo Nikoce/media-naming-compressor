@@ -162,23 +162,44 @@
     </div>
 
     <section id="subtitlePage" hidden>
-      <section class="panel subtitle-panel" id="subtitlePanel">
+      <section class="panel subtitle-upload-panel">
         <div class="panel-heading compact-heading">
           <div><span class="section-kicker">自动字幕</span><h2>视频字幕工作台</h2></div>
           <div class="mini-status" id="subtitleStatus">等待视频</div>
         </div>
-        <p class="subtitle-help">上传视频、识别语音、校对字幕并选择样式。首次识别需要下载语音模型。</p>
-        <div class="subtitle-grid">
-          <div class="field subtitle-file-field"><span>视频</span><input id="subtitleFile" type="file" accept="video/*,.mp4,.mov,.mkv,.webm,.avi" hidden /><label class="ghost-button file-choose-button" for="subtitleFile">选择视频</label></div>
-          <label class="field subtitle-style-field"><span>字幕样式</span><select id="subtitleStyle"><option value="classic">经典白字黑边</option><option value="boxed">深色底框</option><option value="yellow">醒目黄字</option></select></label>
-          <button class="secondary-button subtitle-transcribe" id="transcribeBtn" type="button">识别音频并生成字幕</button>
-          <div class="subtitle-file-name" id="subtitleFileName" aria-live="polite">尚未选择视频</div>
+        <p class="subtitle-help">上传视频，识别语音，再校对字幕与预览效果。首次使用需要下载语音模型。</p>
+        <div class="subtitle-upload-row">
+          <div class="subtitle-dropzone" id="subtitleDropZone" role="button" tabindex="0" aria-label="拖拽或选择视频">
+            <input id="subtitleFile" type="file" accept="video/*,.mp4,.mov,.mkv,.webm,.avi" hidden />
+            <span class="subtitle-drop-icon" aria-hidden="true">↥</span>
+            <div><strong>拖入视频，或 <label for="subtitleFile">选择视频</label></strong><span id="subtitleFileName" aria-live="polite">支持 MP4、MOV、MKV、WebM、AVI</span></div>
+          </div>
+          <button class="primary-button" id="transcribeBtn" type="button" disabled>识别音频并生成字幕</button>
         </div>
-        <video id="subtitleVideo" controls playsinline hidden></video>
-        <div class="subtitle-editor" id="subtitleEditor" hidden>
-          <label class="field"><span>字幕内容（每行：开始秒数 | 结束秒数 | 文字，可直接修改）</span><textarea id="subtitleCues" rows="8" spellcheck="false"></textarea></label>
-          <div class="subtitle-actions"><button class="secondary-button" id="subtitleExportBtn" type="button">单独导出 MP4</button><button class="primary-button" id="subtitleNameExportBtn" type="button">发送到命名页面</button></div>
-        </div>
+      </section>
+      <section class="subtitle-workbench" aria-label="字幕编辑工作区">
+        <aside class="panel subtitle-style-panel">
+          <div class="panel-heading compact-heading"><div><span class="section-kicker">样式</span><h2>字幕外观</h2></div></div>
+          <p class="subtitle-help">点击样式，视频预览会立即更新。</p>
+          <div class="subtitle-style-cards" id="subtitleStyles" role="group" aria-label="选择字幕样式">
+            <button class="subtitle-style-card active" type="button" data-style="classic" aria-pressed="true"><span class="subtitle-style-demo"><span class="demo-classic">字幕 Aa</span></span><strong>经典白字黑边</strong></button>
+            <button class="subtitle-style-card" type="button" data-style="boxed" aria-pressed="false"><span class="subtitle-style-demo"><span class="demo-boxed">字幕 Aa</span></span><strong>深色底框</strong></button>
+            <button class="subtitle-style-card" type="button" data-style="yellow" aria-pressed="false"><span class="subtitle-style-demo"><span class="demo-yellow">字幕 Aa</span></span><strong>醒目黄字</strong></button>
+          </div>
+        </aside>
+        <section class="panel subtitle-preview-panel">
+          <div class="panel-heading compact-heading"><div><span class="section-kicker">预览与校对</span><h2>视频预览</h2></div><span class="mini-status" id="subtitlePreviewStatus">上传视频后可预览</span></div>
+          <div class="subtitle-video-frame" id="subtitleVideoFrame">
+            <div class="subtitle-preview-empty" id="subtitlePreviewEmpty">上传视频后，这里会显示字幕预览</div>
+            <video id="subtitleVideo" controls playsinline hidden></video>
+            <canvas id="subtitlePreviewCanvas" aria-hidden="true" hidden></canvas>
+          </div>
+          <div class="subtitle-editor" id="subtitleEditor" hidden>
+            <label class="field"><span>字幕内容（开始秒数 | 结束秒数 | 文字）</span><textarea id="subtitleCues" rows="7" spellcheck="false"></textarea></label>
+            <div class="subtitle-cue-list" id="subtitleCueList" aria-label="字幕片段"></div>
+            <div class="subtitle-actions"><button class="secondary-button" id="subtitleExportBtn" type="button">单独导出 MP4</button><button class="primary-button" id="subtitleNameExportBtn" type="button">发送到命名页面</button></div>
+          </div>
+        </section>
       </section>
       <section class="panel subtitle-results" id="subtitleResultsPanel" hidden>
         <div class="panel-heading compact-heading"><h2>字幕导出结果</h2></div>
