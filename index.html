@@ -162,51 +162,67 @@
     </div>
 
     <section id="subtitlePage" hidden>
-      <section class="panel subtitle-upload-panel">
-        <div class="panel-heading compact-heading">
-          <div><span class="section-kicker">自动字幕</span><h2>视频字幕工作台</h2></div>
-          <div class="mini-status" id="subtitleStatus">等待视频</div>
-        </div>
-        <p class="subtitle-help">上传视频，识别语音，再校对字幕与预览效果。首次使用需要下载语音模型。</p>
-        <div class="subtitle-upload-row">
-          <div class="subtitle-dropzone" id="subtitleDropZone" role="button" tabindex="0" aria-label="拖拽或选择视频">
-            <input id="subtitleFile" type="file" accept="video/*,.mp4,.mov,.mkv,.webm,.avi" multiple hidden />
-            <span class="subtitle-drop-icon" aria-hidden="true">↥</span>
-            <div><strong>批量拖入视频，或 <label for="subtitleFile">选择视频</label></strong><span id="subtitleFileName" aria-live="polite">可一次选择多个 MP4、MOV、MKV、WebM、AVI 视频</span></div>
-          </div>
-          <div class="subtitle-upload-actions"><button class="secondary-button" id="transcribeBtn" type="button" disabled>识别当前视频</button><button class="primary-button" id="transcribeAllBtn" type="button" disabled>批量识别字幕</button></div>
-        </div>
-        <div class="subtitle-batch-panel" id="subtitleBatchPanel" hidden><div class="subtitle-batch-heading"><strong>视频队列</strong><span id="subtitleBatchCount">0 个视频</span></div><div class="subtitle-batch-list" id="subtitleBatchList"></div></div>
-      </section>
-      <section class="subtitle-workbench" aria-label="字幕编辑工作区">
-        <aside class="panel subtitle-style-panel">
-          <div class="panel-heading compact-heading"><div><span class="section-kicker">样式</span><h2>字幕外观</h2></div></div>
-          <p class="subtitle-help">点击样式，视频预览会立即更新。</p>
-          <div class="subtitle-style-cards" id="subtitleStyles" role="group" aria-label="选择字幕样式">
-            <button class="subtitle-style-card active" type="button" data-style="classic" aria-pressed="true"><span class="subtitle-style-demo"><span class="demo-classic">字幕 Aa</span></span><strong>经典白字黑边</strong></button>
-            <button class="subtitle-style-card" type="button" data-style="boxed" aria-pressed="false"><span class="subtitle-style-demo"><span class="demo-boxed">字幕 Aa</span></span><strong>深色底框</strong></button>
-            <button class="subtitle-style-card" type="button" data-style="yellow" aria-pressed="false"><span class="subtitle-style-demo"><span class="demo-yellow">字幕 Aa</span></span><strong>醒目黄字</strong></button>
-          </div>
+      <header class="subtitle-page-header">
+        <div><span class="section-kicker">AUTO CAPTIONS · 自动字幕</span><h2>视频字幕工作台</h2><p>按顺序添加视频、识别语音、校对字幕并导出成品。</p></div>
+        <div class="mini-status" id="subtitleStatus" role="status" aria-live="polite">等待视频</div>
+      </header>
+      <div class="subtitle-layout">
+        <aside class="subtitle-flow" aria-label="字幕处理流程">
+          <section class="panel subtitle-upload-panel">
+            <div class="subtitle-step-heading"><span class="subtitle-step-number">01</span><div><h3>添加视频</h3><p>一次选择多个，也可以直接拖入。</p></div></div>
+            <div class="subtitle-dropzone" id="subtitleDropZone" role="button" tabindex="0" aria-label="拖拽或选择视频">
+              <input id="subtitleFile" type="file" accept="video/*,.mp4,.mov,.mkv,.webm,.avi" multiple hidden />
+              <span class="subtitle-drop-icon" aria-hidden="true">↥</span>
+              <div><strong>拖入视频到这里</strong><span>或 <label for="subtitleFile">选择视频文件</label></span><small id="subtitleFileName" aria-live="polite">支持 MP4、MOV、MKV、WebM、AVI</small></div>
+            </div>
+          </section>
+          <section class="panel subtitle-batch-panel" id="subtitleBatchPanel">
+            <div class="subtitle-step-heading"><span class="subtitle-step-number">02</span><div><h3>视频队列</h3><p id="subtitleBatchCount">0 个视频</p></div></div>
+            <div class="subtitle-batch-list" id="subtitleBatchList"><p class="subtitle-queue-empty" id="subtitleQueueEmpty">添加视频后，在这里选择要预览和校对的文件。</p></div>
+          </section>
+          <section class="panel subtitle-recognition-panel">
+            <div class="subtitle-step-heading"><span class="subtitle-step-number">03</span><div><h3>识别语音</h3><p>批量识别会按队列顺序处理。</p></div></div>
+            <div class="subtitle-upload-actions"><button class="primary-button" id="transcribeAllBtn" type="button" disabled>批量识别字幕</button><button class="secondary-button" id="transcribeBtn" type="button" disabled>只识别当前视频</button></div>
+            <p class="subtitle-model-note">首次识别需要下载语音模型，请保持页面打开。</p>
+          </section>
         </aside>
-        <section class="panel subtitle-preview-panel">
-          <div class="panel-heading compact-heading"><div><span class="section-kicker">预览与校对</span><h2>视频预览</h2></div><span class="mini-status" id="subtitlePreviewStatus">上传视频后可预览</span></div>
-          <div class="subtitle-video-frame" id="subtitleVideoFrame">
-            <div class="subtitle-preview-empty" id="subtitlePreviewEmpty">上传视频后，这里会显示字幕预览</div>
-            <video id="subtitleVideo" controls playsinline hidden></video>
-            <canvas id="subtitlePreviewCanvas" aria-hidden="true" hidden></canvas>
+        <div class="subtitle-main" aria-label="字幕预览与编辑">
+          <section class="panel subtitle-canvas">
+          <div class="subtitle-preview-panel">
+            <div class="subtitle-preview-heading"><div><span class="section-kicker">当前视频</span><h3 id="subtitleActiveName">选一个视频开始预览</h3></div><span class="mini-status" id="subtitlePreviewStatus">上传视频后可预览</span></div>
+            <div class="subtitle-video-frame" id="subtitleVideoFrame">
+              <div class="subtitle-preview-empty" id="subtitlePreviewEmpty">视频预览会显示在这里</div>
+              <video id="subtitleVideo" controls playsinline hidden></video>
+              <canvas id="subtitlePreviewCanvas" aria-hidden="true" hidden></canvas>
+            </div>
           </div>
-          <div class="subtitle-editor" id="subtitleEditor" hidden>
-            <label class="field"><span>字幕内容（开始秒数 | 结束秒数 | 文字）</span><textarea id="subtitleCues" rows="7" spellcheck="false"></textarea></label>
-            <div class="subtitle-cue-list" id="subtitleCueList" aria-label="字幕片段"></div>
-            <div class="subtitle-actions"><button class="secondary-button" id="subtitleExportBtn" type="button">单独导出 MP4</button><button class="primary-button" id="subtitleNameExportBtn" type="button">发送到命名页面</button></div>
+          <div class="subtitle-detail-layout">
+          <section class="subtitle-style-panel">
+            <div class="subtitle-section-heading"><div><span class="section-kicker">外观</span><h3>字幕样式</h3></div><p>选择后立即更新当前视频预览</p></div>
+            <div class="subtitle-style-cards" id="subtitleStyles" role="group" aria-label="选择字幕样式">
+              <button class="subtitle-style-card active" type="button" data-style="classic" aria-pressed="true"><span class="subtitle-style-demo"><span class="demo-classic">字幕 Aa</span></span><strong>经典白字黑边</strong></button>
+              <button class="subtitle-style-card" type="button" data-style="boxed" aria-pressed="false"><span class="subtitle-style-demo"><span class="demo-boxed">字幕 Aa</span></span><strong>深色底框</strong></button>
+              <button class="subtitle-style-card" type="button" data-style="yellow" aria-pressed="false"><span class="subtitle-style-demo"><span class="demo-yellow">字幕 Aa</span></span><strong>醒目黄字</strong></button>
+            </div>
+          </section>
+          <section class="subtitle-edit-panel">
+            <div class="subtitle-section-heading"><div><span class="section-kicker">校对</span><h3>字幕内容</h3></div><p>点击片段可跳到对应时间</p></div>
+            <div class="subtitle-editor" id="subtitleEditor" hidden>
+              <label class="field"><span>开始秒数 | 结束秒数 | 文字</span><textarea id="subtitleCues" rows="7" spellcheck="false"></textarea></label>
+              <div class="subtitle-cue-list" id="subtitleCueList" aria-label="字幕片段"></div>
+              <div class="subtitle-actions"><button class="secondary-button" id="subtitleExportBtn" type="button">导出当前 MP4</button><button class="secondary-button" id="subtitleNameExportBtn" type="button">当前视频发送到命名</button></div>
+            </div>
+            <p class="subtitle-editor-empty" id="subtitleEditorEmpty">识别完成后，可在这里逐句检查和修改字幕。</p>
+          </section>
           </div>
-          <div class="subtitle-batch-actions"><span>批量处理队列中已有字幕的视频；未识别的视频会跳过。</span><button class="secondary-button" id="subtitleBatchSendBtn" type="button" disabled>批量发送到命名</button><button class="primary-button" id="subtitleBatchExportBtn" type="button" disabled>批量导出 MP4（ZIP）</button></div>
-        </section>
-      </section>
-      <section class="panel subtitle-results" id="subtitleResultsPanel" hidden>
-        <div class="panel-heading compact-heading"><h2>字幕导出结果</h2></div>
-        <div id="subtitleResults" class="results"></div>
-      </section>
+          <div class="subtitle-export-panel">
+            <div><span class="section-kicker">导出</span><h3>批量导出成品</h3><p>仅处理队列中已有字幕的视频。</p></div>
+            <div class="subtitle-batch-actions"><button class="secondary-button" id="subtitleBatchSendBtn" type="button" disabled>批量发送到命名</button><button class="primary-button" id="subtitleBatchExportBtn" type="button" disabled>批量导出 MP4（ZIP）</button></div>
+          </div>
+          </section>
+          <section class="panel subtitle-results" id="subtitleResultsPanel" hidden><div class="panel-heading compact-heading"><h3>字幕导出结果</h3></div><div id="subtitleResults" class="results"></div></section>
+        </div>
+      </div>
     </section>
   </main>
   <script type="module" src="/src/app.js"></script>

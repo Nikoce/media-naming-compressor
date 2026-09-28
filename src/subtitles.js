@@ -150,10 +150,18 @@ async function burnCues(ffmpeg, file, cues, style, width = video.videoWidth, hei
 
 export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchSend }) {
   function renderBatchList() {
-    $('subtitleBatchPanel').hidden = items.length === 0;
     $('subtitleBatchCount').textContent = `${items.length} 个视频`;
-    $('subtitleBatchList').replaceChildren();
+    const list = $('subtitleBatchList');
+    list.replaceChildren();
+    if (!items.length) {
+      const empty = document.createElement('p');
+      empty.className = 'subtitle-queue-empty';
+      empty.textContent = '添加视频后，在这里选择要预览和校对的文件。';
+      list.appendChild(empty);
+    }
     items.forEach((item, index) => {
+      const row = document.createElement('div');
+      row.className = 'subtitle-queue-row';
       const button = document.createElement('button');
       button.type = 'button';
       button.className = `subtitle-batch-item${index === activeIndex ? ' active' : ''}${item.error ? ' error' : ''}`;
@@ -164,8 +172,53 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
       detail.textContent = item.error || item.status;
       button.append(name, detail);
       button.addEventListener('click', () => { if (!busy) activateItem(index).catch((error) => setStatus(error.message)); });
-      $('subtitleBatchList').appendChild(button);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'subtitle-remove-button';
+      remove.textContent = '×';
+      remove.title = `移除 ${item.file.name}`;
+      remove.setAttribute('aria-label', remove.title);
+      remove.disabled = busy;
+      remove.addEventListener('click', () => removeItem(index));
+      row.append(button, remove);
+      list.appendChild(row);
     });
+  }
+
+  function removeItem(index) {
+    if (busy || !items[index]) return;
+    const wasActive = index === activeIndex;
+    items.splice(index, 1);
+    if (!items.length) {
+      if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+      sourceUrl = undefined;
+      activeIndex = -1;
+      selectedFile = null;
+      cuesInput.value = '';
+      editor.hidden = true;
+      $('subtitleEditorEmpty').hidden = false;
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      video.hidden = true;
+      previewCanvas.hidden = true;
+      $('subtitlePreviewEmpty').hidden = false;
+      $('subtitleActiveName').textContent = '选一个视频开始预览';
+      $('subtitlePreviewStatus').textContent = '上传视频后可预览';
+      $('subtitleFileName').textContent = '支持 MP4、MOV、MKV、WebM、AVI';
+      setStatus('等待视频');
+    } else if (wasActive) {
+      activeIndex = -1;
+      activateItem(Math.min(index, items.length - 1)).catch((error) => setStatus(error.message));
+    } else if (index < activeIndex) {
+      activeIndex -= 1;
+    }
+    if (items.length) {
+      $('subtitleFileName').textContent = `${items.length} 个视频已加入队列`;
+      setStatus(`${items.length} 个视频已就绪`);
+    }
+    renderBatchList();
+    setBusy(false);
   }
 
   function activateItem(index) {
@@ -179,6 +232,8 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     sourceUrl = URL.createObjectURL(item.file);
     cuesInput.value = item.cuesText;
     editor.hidden = !item.cuesText.trim();
+    $('subtitleEditorEmpty').hidden = !editor.hidden;
+    $('subtitleActiveName').textContent = item.file.name;
     $('subtitlePreviewEmpty').hidden = true;
     video.hidden = false;
     previewCanvas.hidden = false;
@@ -231,6 +286,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     if (activeIndex === index) {
       cuesInput.value = item.cuesText;
       editor.hidden = false;
+      $('subtitleEditorEmpty').hidden = true;
       renderCueList();
       video.currentTime = Math.max(0, chunks[0].timestamp[0]);
       updatePreview();
