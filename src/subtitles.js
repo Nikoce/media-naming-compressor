@@ -1,5 +1,6 @@
 import { fetchFile } from '@ffmpeg/util';
 import { cuesFromWords, hardCutCues } from './caption-timing.js';
+import { wrapCaptionLines } from './caption-lines.js';
 
 const $ = (id) => document.getElementById(id);
 const fileInput = $('subtitleFile');
@@ -135,24 +136,21 @@ function hexRgba(hex, opacity) {
 }
 
 function drawCaption(context, cue, width, height, bandHeight, style, options) {
-  const fontSize = captionFontSize(width, height, options);
+  let fontSize = captionFontSize(width, height, options);
   const families = { sans: 'Arial, "Microsoft YaHei", sans-serif', serif: 'Georgia, "SimSun", serif', mono: 'Consolas, "Microsoft YaHei", monospace' };
-  context.font = `${options.bold ? 800 : 400} ${fontSize}px ${families[options.fontFamily] || families.sans}`;
   context.textAlign = options.textAlign || 'center';
   context.textBaseline = 'middle';
   const centerX = width * options.positionX / 100;
   const maxWidth = Math.max(width * 0.16, Math.min(width * 0.88, 2 * Math.min(centerX, width - centerX) - width * 0.04));
   const textX = centerX + (context.textAlign === 'left' ? -maxWidth / 2 : context.textAlign === 'right' ? maxWidth / 2 : 0);
-  const chunks = cue.text.match(/[A-Za-z0-9]+(?:['’._-][A-Za-z0-9]+)*\s*|./gu) || [];
-  const lines = [];
-  let line = '';
-  for (const chunk of chunks) {
-    if (context.measureText(line + chunk).width > maxWidth && line) { lines.push(line.trimEnd()); line = ''; }
-    line += chunk.trimStart();
-  }
-  if (line) lines.push(line.trimEnd());
-  const visibleLines = lines.slice(0, 3);
-  const lineHeight = fontSize * 1.22;
+  let visibleLines;
+  do {
+    context.font = `${options.bold ? 800 : 400} ${fontSize}px ${families[options.fontFamily] || families.sans}`;
+    visibleLines = wrapCaptionLines(cue.text, maxWidth, (text) => context.measureText(text).width);
+    if (visibleLines.length <= 3 || fontSize <= 12) break;
+    fontSize = Math.max(12, Math.floor(fontSize * 0.9));
+  } while (true);
+  const lineHeight = Math.min(fontSize * 1.22, (bandHeight - 8) / Math.max(1, visibleLines.length));
   const top = Math.max(fontSize / 2 + 4, (bandHeight - visibleLines.length * lineHeight) / 2 + lineHeight / 2);
   if (style === 'boxed') {
     context.fillStyle = hexRgba(options.boxColor, options.boxOpacity);
@@ -181,6 +179,16 @@ async function canvasPng(cue, width, height, style, options) {
   return { bytes: new Uint8Array(await blob.arrayBuffer()), bandHeight };
 }
 
+function concatImageList(segments) {
+  const lines = ['ffconcat version 1.0'];
+  for (const { path, duration } of segments) {
+    lines.push(`file '${path}'`, `duration ${Math.max(0.001, duration).toFixed(6)}`);
+  }
+  // The concat demuxer needs the last file repeated to honor its duration.
+  lines.push(`file '${segments.at(-1).path}'`);
+  return `${lines.join('\n')}\n`;
+}
+
 async function getAudio(ffmpeg, file) {
   const input = `asr-input-${crypto.randomUUID()}${file.name.match(/\.[^.]+$/)?.[0] || '.mp4'}`;
   const audio = `asr-${crypto.randomUUID()}.wav`;
@@ -207,28 +215,41 @@ async function burnCues(ffmpeg, file, cues, style, options, width = video.videoW
   const prefix = `caption-${crypto.randomUUID()}`;
   const input = `${prefix}-source${file.name.match(/\.[^.]+$/)?.[0] || '.mp4'}`;
   const output = `${prefix}-output.mp4`;
+  const manifest = `${prefix}-captions.ffcat`;
   const paths = [];
   const log = [];
   const onLog = ({ message }) => { log.push(message); if (log.length > 12) log.shift(); };
   ffmpeg.on('log', onLog);
   try {
     await ffmpeg.writeFile(input, await fetchFile(file));
-    const args = ['-y', '-i', input];
-    let bandHeight = 0;
+    const bandHeight = captionBandHeight(width, height, options);
+    const blankCanvas = document.createElement('canvas');
+    blankCanvas.width = width;
+    blankCanvas.height = bandHeight;
+    const blank = await new Promise((resolve, reject) => blankCanvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('透明字幕图片生成失败')), 'image/png'));
+    const blankPath = `${prefix}-blank.png`;
+    paths.push(blankPath);
+    await ffmpeg.writeFile(blankPath, new Uint8Array(await blank.arrayBuffer()));
+    const segments = [];
+    let cursor = 0;
     for (let i = 0; i < cues.length; i += 1) {
+      const cue = cues[i];
+      if (cue.start > cursor) segments.push({ path: blankPath, duration: cue.start - cursor });
       const png = await canvasPng(cues[i], width, height, style, options);
-      bandHeight = png.bandHeight;
       const path = `${prefix}-${i}.png`;
       paths.push(path);
       await ffmpeg.writeFile(path, png.bytes);
-      args.push('-i', path);
+      segments.push({ path, duration: cue.end - cue.start });
+      cursor = cue.end;
     }
-    const filters = cues.map((cue, i) => {
-      const before = i ? `[v${i}]` : '[0:v]';
-      const after = `[v${i + 1}]`;
-      return `${before}[${i + 1}:v]overlay=0:${captionY(height, bandHeight, options.positionY)}:enable='gte(t,${cue.start})*lt(t,${cue.end})':eof_action=repeat${after}`;
-    }).join(';');
-    args.push('-filter_complex', filters, '-map', `[v${cues.length}]`, '-map', '0:a?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', output);
+    segments.push({ path: blankPath, duration: 0.1 });
+    await ffmpeg.writeFile(manifest, new TextEncoder().encode(concatImageList(segments)));
+    const args = [
+      '-y', '-i', input, '-safe', '0', '-f', 'concat', '-i', manifest,
+      '-filter_complex', `[0:v][1:v]overlay=0:${captionY(height, bandHeight, options.positionY)}:shortest=0:eof_action=pass:repeatlast=0[v]`,
+      '-map', '[v]', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21',
+      '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', output,
+    ];
     const code = await ffmpeg.exec(args);
     if (code !== 0) {
       console.error('字幕合成 FFmpeg 日志', log.join('\n'));
@@ -238,7 +259,7 @@ async function burnCues(ffmpeg, file, cues, style, options, width = video.videoW
     return new Blob([bytes], { type: 'video/mp4' });
   } finally {
     ffmpeg.off('log', onLog);
-    for (const path of [input, output, ...paths]) await ffmpeg.deleteFile(path).catch(() => {});
+    for (const path of [input, output, manifest, ...paths]) await ffmpeg.deleteFile(path).catch(() => {});
   }
 }
 
@@ -803,7 +824,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     try {
       setStatus('正在合成字幕视频…');
       const blob = await burnCues(await ensureFFmpeg(), file, cues, currentStyle, currentOptions);
-      await onExport(blob, file, named);
+      await onExport(blob, file, named, { width: video.videoWidth, height: video.videoHeight, duration: video.duration });
       setStatus(named ? '已发送到命名页面' : 'MP4 已导出');
     } catch (error) { setStatus('导出失败'); window.alert(error.message || '导出失败'); }
     finally { setBusy(false); }
@@ -829,7 +850,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
           await activateItem(index);
           renderBatchList();
           const blob = await burnCues(ffmpeg, item.file, cues, item.style, item.options);
-          outputs.push({ blob, source: item.file });
+          outputs.push({ blob, source: item.file, metadata: { width: video.videoWidth, height: video.videoHeight, duration: video.duration } });
           item.status = '成品已生成';
         } catch (error) {
           item.error = error.message || '导出失败';

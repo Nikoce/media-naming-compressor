@@ -10,7 +10,7 @@
     "prebuild": "node scripts/sync-ffmpeg-core.js",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "check": "node --check src/app.js && node --check src/subtitles.js && node --check scripts/sync-ffmpeg-core.js && node --test src/caption-timing.test.js && npm run build"
+    "check": "node --check src/app.js && node --check src/subtitles.js && node --check scripts/sync-ffmpeg-core.js && node --test src/caption-timing.test.js src/caption-lines.test.js && npm run build"
   },
   "engines": {
     "node": ">=20.19"

@@ -266,7 +266,7 @@ function compressionOnlyNames() {
 }
 
 function isProcessing(item) {
-  return String(item.status || '').startsWith('正在压制');
+  return /^(正在压制|正在命名)/u.test(String(item.status || ''));
 }
 
 function itemClass(item) {
@@ -278,7 +278,7 @@ function itemClass(item) {
 
 function statusChip(item) {
   if (item.error || item.processError || item.status === '输出失败') return { text: '异常', cls: 'error' };
-  if (isProcessing(item)) return { text: item.progress ? `${item.progress}%` : (item.engine === 'ffmpeg' ? '兼容压制' : '极速压制'), cls: '' };
+  if (isProcessing(item)) return { text: item.status.startsWith('正在命名') ? '正在命名' : (item.progress ? `${item.progress}%` : (item.engine === 'ffmpeg' ? '兼容压制' : '极速压制')), cls: '' };
   if (item.status === '输出完成') return { text: '已输出', cls: 'ok' };
   if (!item.detected) return { text: '分析中', cls: '' };
   const naming = namingState(item);
@@ -286,6 +286,10 @@ function statusChip(item) {
 }
 
 function renderSummary() {
+  if (!state.processing) {
+    processBtn.textContent = state.files.length && state.files.every((item) => item.readyMp4)
+      ? '批量命名并导出' : '批量命名并压制';
+  }
   fileCount.textContent = `${state.files.length} 个文件`;
   if (!state.files.length) {
     previewSummary.innerHTML = '';
@@ -690,7 +694,7 @@ async function probeWithFFmpeg(file) {
   }
 }
 
-async function addFiles(fileList) {
+async function addFiles(fileList, prepared = new Map()) {
   if (state.processing || state.translating) return;
   fields.date.value = todayYYMMDD();
   const incoming = [...fileList].filter((file) => file.type.startsWith('video/') || /\.(mp4|mov|m4v|avi|mkv|webm|mpeg|mpg)$/i.test(file.name));
@@ -698,8 +702,21 @@ async function addFiles(fileList) {
   invalidateOutputs();
   const startIndex = state.files.length;
   for (const file of incoming) {
+    const ready = prepared.get(file);
+    const metadata = ready?.metadata;
+    const hasMetadata = Number.isFinite(metadata?.duration) && metadata.duration > 0
+      && Number.isFinite(metadata?.width) && metadata.width > 0
+      && Number.isFinite(metadata?.height) && metadata.height > 0;
     state.files.push({
-      id: crypto.randomUUID(), file, status: '等待分析', detected: null,
+      id: crypto.randomUUID(), file, status: hasMetadata ? '分析完成' : '等待分析',
+      detected: hasMetadata ? {
+        date: todayYYMMDD(), duration: Math.max(1, Math.round(metadata.duration)),
+        width: metadata.width, height: metadata.height,
+        resolution: `${metadata.width}×${metadata.height}`,
+        ratio: ratioCode(metadata.width, metadata.height),
+        language: detectLanguage(ready.source.name),
+      } : null,
+      readyMp4: !!ready,
       error: null, processError: null, progress: 0,
     });
   }
@@ -707,7 +724,9 @@ async function addFiles(fileList) {
   workspace.hidden = false;
   fileInput.value = '';
   renderVideoList();
-  for (let i = startIndex; i < state.files.length; i += 1) await analyzeOne(i);
+  for (let i = startIndex; i < state.files.length; i += 1) {
+    if (!state.files[i].detected) await analyzeOne(i);
+  }
 }
 
 async function analyzeOne(index) {
@@ -873,14 +892,15 @@ async function processAll(renameOutput) {
   releaseOutputs();
   const preset = document.querySelector('input[name="preset"]:checked')?.value || 'standard';
   const activeButton = renameOutput ? processBtn : compressOnlyBtn;
-  const idleLabel = renameOutput ? '批量命名并压制' : '仅压制（保留原名）';
+  const idleLabel = renameOutput && state.files.every((item) => item.readyMp4)
+    ? '批量命名并导出' : (renameOutput ? '批量命名并压制' : '仅压制（保留原名）');
   const compressionNames = renameOutput ? null : compressionOnlyNames();
   state.activeProcessButton = activeButton;
   setProcessingControls(true);
   activeButton.textContent = '正在检测极速引擎…';
   resultPanel.hidden = false;
 
-  const fastEngineAvailable = await ensureFastEngine();
+  const fastEngineAvailable = state.files.some((item) => !renameOutput || !item.readyMp4) ? await ensureFastEngine() : false;
   let ffmpeg = null;
   let usedFastEngine = false;
   let usedFallbackEngine = false;
@@ -892,8 +912,8 @@ async function processAll(renameOutput) {
     state.lastProgressPercent = -1;
     item.progress = 0;
     item.processError = null;
-    item.engine = fastEngineAvailable ? 'webcodecs' : 'ffmpeg';
-    item.status = '正在压制 0%';
+    item.engine = renameOutput && item.readyMp4 ? 'subtitle' : (fastEngineAvailable ? 'webcodecs' : 'ffmpeg');
+    item.status = renameOutput && item.readyMp4 ? '正在命名…' : '正在压制 0%';
     activeButton.textContent = `正在处理 ${i + 1} / ${state.files.length}`;
     renderVideoList();
     const historyValues = renameOutput ? valuesFor(item) : null;
@@ -901,7 +921,9 @@ async function processAll(renameOutput) {
     try {
       let output = null;
       let fastEngineError = null;
-      if (fastEngineAvailable) {
+      if (renameOutput && item.readyMp4) {
+        output = { outputName, blob: item.file, url: URL.createObjectURL(item.file), engine: 'subtitle' };
+      } else if (fastEngineAvailable) {
         try {
           output = await transcodeWithMediaBunny(item, preset, outputName);
           usedFastEngine = true;
@@ -1107,16 +1129,16 @@ window.addEventListener('hashchange', syncPage);
 syncPage();
 setupSubtitles({
   ensureFFmpeg,
-  async onExport(blob, source, named) {
+  async onExport(blob, source, named, metadata) {
     if (state.processing || state.translating) throw new Error('请等待当前批量任务完成。');
     const outputName = `${sourceBaseName(source.name)}-字幕.mp4`;
     if (named) {
       const subtitled = new File([blob], outputName, { type: 'video/mp4' });
-      await addFiles([subtitled]);
+      await addFiles([subtitled], new Map([[subtitled, { source, metadata }]]));
       const item = state.files.at(-1);
       if (item?.error) throw new Error(item.error);
       window.location.hash = '#naming';
-      $('notice').textContent = '字幕视频已加入素材列表。补全命名字段后，点击「批量命名并压制」导出。';
+      $('notice').textContent = '字幕视频已加入素材列表。补全命名字段后，使用下方按钮导出；字幕成品无需再次压制。';
       fields.product.focus();
       return;
     }
@@ -1138,11 +1160,12 @@ setupSubtitles({
     if (state.processing || state.translating) throw new Error('请等待当前批量任务完成。');
     const names = subtitleOutputNames(outputs);
     const files = outputs.map(({ blob }, index) => new File([blob], names[index], { type: 'video/mp4' }));
+    const prepared = new Map(files.map((file, index) => [file, { source: outputs[index].source, metadata: outputs[index].metadata }]));
     const start = state.files.length;
-    await addFiles(files);
+    await addFiles(files, prepared);
     const failed = state.files.slice(start).filter((item) => item.error);
     window.location.hash = '#naming';
-    $('notice').textContent = `已发送 ${files.length} 个字幕视频。补全命名字段后，点击「批量命名并压制」导出。`;
+    $('notice').textContent = `已发送 ${files.length} 个字幕视频。补全命名字段后，使用下方按钮导出；字幕成品无需再次压制。`;
     if (failed.length) throw new Error(`${failed.length} 个字幕视频的信息读取失败，请查看素材列表。`);
     fields.product.focus();
   },

@@ -132,3 +132,23 @@ test('manual overlaps are cut at the next cue start', () => {
     { start: 2, end: 4, text: 'second' },
   ]);
 });
+
+test('common abbreviations do not end a cue before the name', () => {
+  const cues = cuesFromWords([
+    { text: ' Dr.', timestamp: [0, 0.2] },
+    { text: ' Smith', timestamp: [0.2, 0.5] },
+    { text: ' arrived.', timestamp: [0.5, 0.9] },
+  ]);
+  assert.deepEqual(cues.map(({ text }) => text), ['Dr. Smith arrived.']);
+});
+
+test('a long Chinese chunk prefers a punctuation boundary and respects width', () => {
+  const cues = cuesFromWords([{
+    text: '这个玩法很有意思，但是广告真的太多了，希望能够改进。',
+    timestamp: [0, 2.2],
+  }]);
+  assert.ok(cues.length >= 2);
+  assert.ok(cues[0].text.endsWith('，'));
+  assert.equal(cues.map(({ text }) => text).join(''), '这个玩法很有意思，但是广告真的太多了，希望能够改进。');
+  assert.ok(cues.every(({ text }) => [...text].length <= 18));
+});

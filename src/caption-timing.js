@@ -2,6 +2,7 @@ const MAX_CAPTION_SECONDS = 2.3;
 const MAX_CAPTION_WIDTH = 36;
 const MAX_SPEECH_GAP = 0.5;
 const CLAUSE_STARTS = new Set(['and', 'but', 'or']);
+const ABBREVIATIONS = new Set(['mr.', 'mrs.', 'ms.', 'dr.', 'prof.', 'sr.', 'jr.', 'st.', 'vs.', 'etc.']);
 const ATTACH_TO_NEXT = new Set([
   'a', 'an', 'the', 'this', 'that', 'these', 'those', 'my', 'your', 'our',
   'too', 'very', 'so', 'really', 'quite', 'no', 'not', 'many', 'much',
@@ -10,7 +11,7 @@ const ATTACH_TO_NEXT = new Set([
 ]);
 
 function textWidth(text) {
-  return [...text].reduce((width, char) => width + (/[^\x00-\xff]/u.test(char) ? 2 : 1), 0);
+  return [...text].reduce((width, char) => width + (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Extended_Pictographic}，。！？、；：]/u.test(char) ? 2 : 1), 0);
 }
 
 function cleanText(text) {
@@ -65,11 +66,15 @@ function splitLongWord(word) {
   const parts = [];
   let part = '';
   for (const char of text) {
-    if (textWidth(part + char) > MAX_CAPTION_WIDTH && part) {
-      parts.push(part.trim());
-      part = '';
-    }
     part += char;
+    while (textWidth(part) > MAX_CAPTION_WIDTH && part.length > 1) {
+      const fitted = part.slice(0, -1);
+      const punctuation = Math.max(fitted.lastIndexOf('，'), fitted.lastIndexOf('。'), fitted.lastIndexOf('！'), fitted.lastIndexOf('？'), fitted.lastIndexOf('、'));
+      const split = punctuation >= 0 && textWidth(part.slice(0, punctuation + 1)) >= MAX_CAPTION_WIDTH * 0.45
+        && punctuation + 1 < part.length ? punctuation + 1 : part.length - 1;
+      parts.push(part.slice(0, split).trim());
+      part = part.slice(split);
+    }
   }
   if (part.trim()) parts.push(part.trim());
   const totalWidth = parts.reduce((sum, value) => sum + textWidth(value), 0);
@@ -121,7 +126,7 @@ export function cuesFromWords(chunks) {
     }
     groupWords.push(word);
     const current = cueFromWords(groupWords);
-    if (/[。！？!?；;.]$/u.test(current.text)
+    if ((/[。！？!?；;.]$/u.test(current.text) && !ABBREVIATIONS.has(cleanText(word.text).toLowerCase()))
       || (/[，,]$/u.test(current.text) && current.end - current.start >= 1 && textWidth(current.text) >= 18)) {
       groups.push(current);
       groupWords = [];
