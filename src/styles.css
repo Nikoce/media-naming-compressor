@@ -45,6 +45,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(40, 95, 192,
   margin-bottom: 18px;
 }
 
+.brand-lockup { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.brand-logo { flex: 0 0 auto; display: block; width: 56px; height: 56px; }
+.brand-copy { min-width: 0; }
+
 .eyebrow, .section-kicker {
   color: var(--accent);
   font-size: 11px;
@@ -411,6 +415,7 @@ h1 {
   .subtitle-upload-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .shell { width: min(100% - 20px, 1600px); padding-top: 18px; }
   .topbar { display: block; }
+  .brand-logo { width: 48px; height: 48px; }
   h1 { font-size: 30px; }
   .local-badge { display: inline-flex; margin-top: 14px; }
   .panel { padding: 16px; }
