@@ -24,6 +24,7 @@ const namedButton = $('subtitleNameExportBtn');
 const batchExportButton = $('subtitleBatchExportBtn');
 const batchSendButton = $('subtitleBatchSendBtn');
 const styleControls = {
+  fontFamily: $('subtitleFontFamily'),
   fontSize: $('subtitleFontSize'),
   textColor: $('subtitleTextColor'),
   outlineColor: $('subtitleOutlineColor'),
@@ -34,8 +35,8 @@ const styleControls = {
   boxOpacity: $('subtitleBoxOpacity'),
 };
 const styleResetButton = $('subtitleStyleReset');
-const positionPad = $('subtitlePositionPad');
-const positionMarker = $('subtitlePositionMarker');
+const boldButton = $('subtitleBold');
+const alignButtons = [...document.querySelectorAll('[data-align]')];
 const centerButton = $('subtitleCenter');
 const bottomCenterButton = $('subtitleBottomCenter');
 let sourceUrl;
@@ -71,6 +72,9 @@ function serializeCues(cues) { return cues.map((cue) => `${cue.start.toFixed(2)}
 
 function defaultCaptionOptions(style) {
   return {
+    fontFamily: 'sans',
+    bold: true,
+    textAlign: 'center',
     fontSize: 100,
     textColor: style === 'yellow' ? '#ffe547' : '#ffffff',
     outlineColor: '#111111',
@@ -85,7 +89,7 @@ function defaultCaptionOptions(style) {
 function setStatus(message) { status.textContent = message; }
 function setBusy(value) {
   busy = value;
-  for (const element of [fileInput, exportButton, namedButton, cuesInput, addCueButton, deleteCueButton, $('subtitleZoomIn'), $('subtitleZoomOut'), styleResetButton, centerButton, bottomCenterButton, positionMarker, ...Object.values(styleControls), ...document.querySelectorAll('.subtitle-style-card')]) element.disabled = value;
+  for (const element of [fileInput, exportButton, namedButton, cuesInput, addCueButton, deleteCueButton, $('subtitleZoomIn'), $('subtitleZoomOut'), styleResetButton, centerButton, bottomCenterButton, boldButton, ...alignButtons, ...Object.values(styleControls), ...document.querySelectorAll('.subtitle-style-card')]) element.disabled = value;
   exportButton.disabled = value || !selectedFile || !items[activeIndex]?.cuesText.trim();
   namedButton.disabled = exportButton.disabled;
   transcribeButton.disabled = value || !selectedFile;
@@ -131,11 +135,13 @@ function hexRgba(hex, opacity) {
 
 function drawCaption(context, cue, width, height, bandHeight, style, options) {
   const fontSize = captionFontSize(width, height, options);
-  context.font = `800 ${fontSize}px Arial, "Microsoft YaHei", sans-serif`;
-  context.textAlign = 'center';
+  const families = { sans: 'Arial, "Microsoft YaHei", sans-serif', serif: 'Georgia, "SimSun", serif', mono: 'Consolas, "Microsoft YaHei", monospace' };
+  context.font = `${options.bold ? 800 : 400} ${fontSize}px ${families[options.fontFamily] || families.sans}`;
+  context.textAlign = options.textAlign || 'center';
   context.textBaseline = 'middle';
   const centerX = width * options.positionX / 100;
   const maxWidth = Math.max(width * 0.16, Math.min(width * 0.88, 2 * Math.min(centerX, width - centerX) - width * 0.04));
+  const textX = centerX + (context.textAlign === 'left' ? -maxWidth / 2 : context.textAlign === 'right' ? maxWidth / 2 : 0);
   const chunks = cue.text.match(/[A-Za-z0-9]+(?:['’._-][A-Za-z0-9]+)*\s*|./gu) || [];
   const lines = [];
   let line = '';
@@ -158,9 +164,9 @@ function drawCaption(context, cue, width, height, bandHeight, style, options) {
     context.lineWidth = fontSize * options.outline / 100;
     context.strokeStyle = options.outlineColor;
     context.lineJoin = 'round';
-    if (options.outline > 0) context.strokeText(text, centerX, y, maxWidth);
+    if (options.outline > 0) context.strokeText(text, textX, y, maxWidth);
     context.fillStyle = options.textColor;
-    context.fillText(text, centerX, y, maxWidth);
+    context.fillText(text, textX, y, maxWidth);
   });
 }
 
@@ -237,12 +243,14 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
   function syncStyleControls() {
     for (const [name, control] of Object.entries(styleControls)) control.value = currentOptions[name];
     $('subtitleFontSizeValue').textContent = `${currentOptions.fontSize}%`;
-    $('subtitleOutlineValue').textContent = `${currentOptions.outline}%`;
+    const previewWidth = video.videoWidth || 1920;
+    const previewHeight = video.videoHeight || 1080;
+    $('subtitleOutlineValue').textContent = `${Math.round(captionFontSize(previewWidth, previewHeight, currentOptions) * currentOptions.outline / 100)} px`;
     $('subtitleBoxOpacityValue').textContent = `${currentOptions.boxOpacity}%`;
     $('subtitlePositionXValue').textContent = `${currentOptions.positionX}%`;
     $('subtitlePositionYValue').textContent = `${currentOptions.positionY}%`;
-    positionMarker.style.left = `${currentOptions.positionX}%`;
-    positionMarker.style.top = `${currentOptions.positionY}%`;
+    boldButton.setAttribute('aria-pressed', String(currentOptions.bold));
+    alignButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.align === currentOptions.textAlign)));
     centerButton.setAttribute('aria-pressed', String(currentOptions.positionX === 50 && currentOptions.positionY === 50));
     bottomCenterButton.setAttribute('aria-pressed', String(currentOptions.positionX === 50 && currentOptions.positionY === 85));
     $('subtitleBoxProperties').hidden = currentStyle !== 'boxed';
@@ -649,42 +657,20 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     currentOptions[name] = control.type === 'range' ? Number(control.value) : control.value;
     saveStyleOptions();
   });
+  boldButton.addEventListener('click', () => {
+    if (busy) return;
+    currentOptions.bold = !currentOptions.bold;
+    saveStyleOptions();
+  });
+  alignButtons.forEach((button) => button.addEventListener('click', () => {
+    if (busy) return;
+    currentOptions.textAlign = button.dataset.align;
+    saveStyleOptions();
+  }));
   for (const [button, x, y] of [[centerButton, 50, 50], [bottomCenterButton, 50, 85]]) button.addEventListener('click', () => {
     if (busy) return;
     currentOptions.positionX = x;
     currentOptions.positionY = y;
-    saveStyleOptions();
-  });
-  positionPad.addEventListener('pointerdown', (event) => {
-    if (busy || event.button !== 0) return;
-    event.preventDefault();
-    positionPad.setPointerCapture(event.pointerId);
-    positionMarker.classList.add('dragging');
-    const move = (pointerEvent) => {
-      const rect = positionPad.getBoundingClientRect();
-      currentOptions.positionX = Math.round(clamp((pointerEvent.clientX - rect.left) / rect.width * 100, 10, 90));
-      currentOptions.positionY = Math.round(clamp((pointerEvent.clientY - rect.top) / rect.height * 100, 10, 90));
-      saveStyleOptions();
-    };
-    const finish = () => {
-      positionPad.removeEventListener('pointermove', move);
-      positionPad.removeEventListener('pointerup', finish);
-      positionPad.removeEventListener('pointercancel', finish);
-      positionMarker.classList.remove('dragging');
-    };
-    move(event);
-    positionPad.addEventListener('pointermove', move);
-    positionPad.addEventListener('pointerup', finish);
-    positionPad.addEventListener('pointercancel', finish);
-  });
-  positionMarker.addEventListener('keydown', (event) => {
-    if (busy || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
-    event.preventDefault();
-    const amount = event.shiftKey ? 5 : 1;
-    if (event.key === 'ArrowLeft') currentOptions.positionX = clamp(currentOptions.positionX - amount, 10, 90);
-    if (event.key === 'ArrowRight') currentOptions.positionX = clamp(currentOptions.positionX + amount, 10, 90);
-    if (event.key === 'ArrowUp') currentOptions.positionY = clamp(currentOptions.positionY - amount, 10, 90);
-    if (event.key === 'ArrowDown') currentOptions.positionY = clamp(currentOptions.positionY + amount, 10, 90);
     saveStyleOptions();
   });
   styleResetButton.addEventListener('click', () => {
@@ -695,6 +681,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     const ratio = video.videoWidth / video.videoHeight;
     videoFrame.style.aspectRatio = String(ratio);
     videoFrame.style.maxWidth = `${Math.min(1100, Math.round(560 * ratio))}px`;
+    syncStyleControls();
     addCueButton.disabled = busy || !selectedFile;
     renderTimeline();
   });

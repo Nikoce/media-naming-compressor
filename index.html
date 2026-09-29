@@ -234,26 +234,30 @@
           </div>
           <div class="subtitle-style-properties">
             <div class="subtitle-properties-heading"><strong>字幕属性</strong><button id="subtitleStyleReset" type="button">恢复默认</button></div>
-            <label class="subtitle-property"><span>字号 <output id="subtitleFontSizeValue" for="subtitleFontSize">100%</output></span><input id="subtitleFontSize" type="range" min="60" max="160" step="10" value="100" /></label>
-            <label class="subtitle-property subtitle-color-property"><span>字体颜色</span><input id="subtitleTextColor" type="color" value="#ffffff" /></label>
-            <label class="subtitle-property subtitle-color-property"><span>描边颜色</span><input id="subtitleOutlineColor" type="color" value="#111111" /></label>
-            <label class="subtitle-property"><span>描边粗细 <output id="subtitleOutlineValue" for="subtitleOutline">13%</output></span><input id="subtitleOutline" type="range" min="0" max="20" step="1" value="13" /></label>
-            <div class="subtitle-position-editor">
-              <strong>字幕位置</strong>
-              <div class="subtitle-position-pad" id="subtitlePositionPad" role="group" aria-label="字幕位置控制区">
-                <span class="subtitle-position-crosshair" aria-hidden="true"></span>
-                <button class="subtitle-position-marker" id="subtitlePositionMarker" type="button" aria-label="拖动调整字幕位置">字幕</button>
-              </div>
-              <div class="subtitle-position-presets" role="group" aria-label="常用字幕位置"><button id="subtitleBottomCenter" type="button" aria-pressed="true">底部居中</button><button id="subtitleCenter" type="button" aria-pressed="false">画面居中</button></div>
-              <label class="subtitle-property"><span>水平位置 <output id="subtitlePositionXValue" for="subtitlePositionX">50%</output></span><input id="subtitlePositionX" type="range" min="10" max="90" step="1" value="50" /></label>
-              <label class="subtitle-property"><span>垂直位置 <output id="subtitlePositionYValue" for="subtitlePositionY">85%</output></span><input id="subtitlePositionY" type="range" min="10" max="90" step="1" value="85" /></label>
+            <div class="subtitle-property-group">
+              <h4>文字</h4>
+              <label class="subtitle-property"><span>字体</span><select id="subtitleFontFamily"><option value="sans">无衬线</option><option value="serif">衬线</option><option value="mono">等宽</option></select></label>
+              <label class="subtitle-property"><span>缩放 <output id="subtitleFontSizeValue" for="subtitleFontSize">100%</output></span><input id="subtitleFontSize" type="range" min="60" max="160" step="5" value="100" /></label>
+              <div class="subtitle-property-row"><span>字形</span><button class="subtitle-icon-button subtitle-weight-button" id="subtitleBold" type="button" aria-label="粗体" title="粗体" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h6a4 4 0 0 1 0 8H7zm0 8h7a4 4 0 0 1 0 8H7z"/></svg></button><label class="subtitle-color-control"><span>颜色</span><input id="subtitleTextColor" type="color" value="#ffffff" aria-label="文字颜色" /></label></div>
             </div>
-            <div class="subtitle-box-properties" id="subtitleBoxProperties" hidden>
-              <label class="subtitle-property subtitle-color-property"><span>底框颜色</span><input id="subtitleBoxColor" type="color" value="#000000" /></label>
-              <label class="subtitle-property"><span>底框不透明度 <output id="subtitleBoxOpacityValue" for="subtitleBoxOpacity">78%</output></span><input id="subtitleBoxOpacity" type="range" min="0" max="100" step="5" value="80" /></label>
+            <div class="subtitle-property-group">
+              <h4>描边与背景</h4>
+              <label class="subtitle-property"><span>描边宽度 <output id="subtitleOutlineValue" for="subtitleOutline">13%</output></span><input id="subtitleOutline" type="range" min="0" max="20" step="1" value="13" /></label>
+              <label class="subtitle-property subtitle-color-property"><span>描边颜色</span><input id="subtitleOutlineColor" type="color" value="#111111" /></label>
+              <div class="subtitle-box-properties" id="subtitleBoxProperties" hidden>
+                <label class="subtitle-property subtitle-color-property"><span>背景颜色</span><input id="subtitleBoxColor" type="color" value="#000000" /></label>
+                <label class="subtitle-property"><span>背景不透明度 <output id="subtitleBoxOpacityValue" for="subtitleBoxOpacity">80%</output></span><input id="subtitleBoxOpacity" type="range" min="0" max="100" step="5" value="80" /></label>
+              </div>
+            </div>
+            <div class="subtitle-property-group subtitle-position-editor">
+              <h4>排列</h4>
+              <div class="subtitle-property-row"><span>对齐</span><div class="subtitle-icon-group" role="group" aria-label="字幕对齐方式"><button class="subtitle-icon-button" type="button" data-align="left" aria-label="左对齐" title="左对齐" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h15M4 9h10M4 13h15M4 17h10"/></svg></button><button class="subtitle-icon-button" type="button" data-align="center" aria-label="居中对齐" title="居中对齐" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M7 9h10M4 13h16M7 17h10"/></svg></button><button class="subtitle-icon-button" type="button" data-align="right" aria-label="右对齐" title="右对齐" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h15M10 9h10M5 13h15M10 17h10"/></svg></button></div></div>
+              <div class="subtitle-property-row"><span>快捷位置</span><div class="subtitle-icon-group" role="group" aria-label="常用字幕位置"><button class="subtitle-icon-button" id="subtitleBottomCenter" type="button" aria-label="底部居中" title="底部居中" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17h8"/></svg></button><button class="subtitle-icon-button" id="subtitleCenter" type="button" aria-label="画面居中" title="画面居中" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8"/></svg></button></div></div>
+              <label class="subtitle-property"><span>水平 X <output id="subtitlePositionXValue" for="subtitlePositionX">50%</output></span><input id="subtitlePositionX" type="range" min="10" max="90" step="1" value="50" /></label>
+              <label class="subtitle-property"><span>垂直 Y <output id="subtitlePositionYValue" for="subtitlePositionY">85%</output></span><input id="subtitlePositionY" type="range" min="10" max="90" step="1" value="85" /></label>
             </div>
           </div>
-          <p class="subtitle-style-note">拖动定位点或滑杆调整位置。每个视频单独保存设置，导出时会应用同样效果。</p>
+          <p class="subtitle-style-note">每个视频单独保存设置，预览与导出使用相同效果。</p>
         </aside>
       </div>
     </section>
