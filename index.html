@@ -202,22 +202,25 @@
                 <span id="subtitleTimecode" class="subtitle-timecode">00:00.00 / 00:00.00</span>
                 <div class="subtitle-zoom-controls" role="group" aria-label="时间轴缩放"><button id="subtitleZoomOut" type="button" aria-label="缩小时间轴">−</button><span id="subtitleZoomValue">100%</span><button id="subtitleZoomIn" type="button" aria-label="放大时间轴">＋</button></div>
               </div>
-              <div class="subtitle-timeline-viewport" id="subtitleTimelineViewport" aria-label="字幕时间轴" tabindex="0">
+              <div class="subtitle-timeline-viewport" id="subtitleTimelineViewport" aria-label="字幕时间轴，可拖动空白处平移" tabindex="0">
                 <div class="subtitle-timeline-content" id="subtitleTimelineContent">
                   <div class="subtitle-timeline-ruler" id="subtitleTimelineRuler" aria-label="点击时间刻度跳转播放"></div>
                   <div class="subtitle-timeline-track"><span class="subtitle-track-label">字幕</span><div class="subtitle-timeline-clips" id="subtitleCueList"></div></div>
                   <div class="subtitle-playhead" id="subtitlePlayhead" aria-hidden="true"></div>
+                  <div class="subtitle-snap-guide" id="subtitleSnapGuide" aria-hidden="true" hidden></div>
                 </div>
               </div>
-              <div class="subtitle-timeline-footer"><span>拖动字幕条移动 · 拖动两端调整时间 · 点击文字直接编辑</span><button id="subtitleDeleteCue" type="button" disabled>删除选中字幕</button></div>
-              <div class="subtitle-actions"><button class="secondary-button" id="subtitleExportBtn" type="button">导出当前 MP4</button><button class="secondary-button" id="subtitleNameExportBtn" type="button">当前视频发送到命名</button></div>
+              <div class="subtitle-timeline-footer"><span>空白处拖动时间轴 · 字幕条自动吸附 · 拖动两端调整时长 · 点击文字编辑</span><button id="subtitleDeleteCue" type="button" disabled>删除选中字幕</button></div>
             </div>
             <p class="subtitle-editor-empty" id="subtitleEditorEmpty">识别完成后，字幕条会按时间出现在这里，可直接拖动和修改。</p>
           </section>
           </div>
           <div class="subtitle-export-panel">
             <div><span class="section-kicker">导出</span><h3>批量导出成品</h3><p>仅处理队列中已有字幕的视频。</p></div>
-            <div class="subtitle-batch-actions"><button class="secondary-button" id="subtitleBatchSendBtn" type="button" disabled>批量发送到命名</button><button class="primary-button" id="subtitleBatchExportBtn" type="button" disabled>批量导出 MP4（ZIP）</button></div>
+            <div class="subtitle-export-groups">
+              <div class="subtitle-export-group"><span>当前视频</span><div class="subtitle-actions"><button class="secondary-button" id="subtitleExportBtn" type="button" disabled>导出当前 MP4</button><button class="secondary-button" id="subtitleNameExportBtn" type="button" disabled>当前视频发送到命名</button></div></div>
+              <div class="subtitle-export-group"><span>视频队列</span><div class="subtitle-batch-actions"><button class="secondary-button" id="subtitleBatchSendBtn" type="button" disabled>批量发送到命名</button><button class="primary-button" id="subtitleBatchExportBtn" type="button" disabled>批量导出 MP4（ZIP）</button></div></div>
+            </div>
           </div>
           </section>
           <section class="panel subtitle-results" id="subtitleResultsPanel" hidden><div class="panel-heading compact-heading"><h3>字幕导出结果</h3></div><div id="subtitleResults" class="results"></div></section>

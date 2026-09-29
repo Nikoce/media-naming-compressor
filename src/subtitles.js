@@ -13,6 +13,7 @@ const timelineViewport = $('subtitleTimelineViewport');
 const timelineContent = $('subtitleTimelineContent');
 const timelineRuler = $('subtitleTimelineRuler');
 const playhead = $('subtitlePlayhead');
+const snapGuide = $('subtitleSnapGuide');
 const addCueButton = $('subtitleAddCue');
 const deleteCueButton = $('subtitleDeleteCue');
 const status = $('subtitleStatus');
@@ -45,6 +46,18 @@ let timelineZoom = 1;
 let timelineScale = 80;
 
 function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
+function nearestSnap(seconds, targets, scale) {
+  const threshold = 10 / scale;
+  let closest = null;
+  for (const target of targets) {
+    const distance = Math.abs(seconds - target);
+    if (distance <= threshold && (!closest || distance < closest.distance)) closest = { time: target, distance };
+  }
+  return closest;
+}
+function timelineTickStep(duration, scale) {
+  return [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find((step) => duration / step <= 200 && step * scale >= 70) || 600;
+}
 function formatTime(seconds) {
   const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
   return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(Math.floor(safe % 60)).padStart(2, '0')}.${String(Math.floor(safe * 100) % 100).padStart(2, '0')}`;
@@ -67,6 +80,8 @@ function setStatus(message) { status.textContent = message; }
 function setBusy(value) {
   busy = value;
   for (const element of [fileInput, exportButton, namedButton, cuesInput, addCueButton, deleteCueButton, $('subtitleZoomIn'), $('subtitleZoomOut'), styleResetButton, ...Object.values(styleControls), ...document.querySelectorAll('.subtitle-style-card')]) element.disabled = value;
+  exportButton.disabled = value || !selectedFile || !items[activeIndex]?.cuesText.trim();
+  namedButton.disabled = exportButton.disabled;
   transcribeButton.disabled = value || !selectedFile;
   transcribeAllButton.disabled = value || !items.length;
   const hasCues = items.some((item) => item.cuesText.trim());
@@ -330,6 +345,8 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     });
     renderBatchList();
     renderTimeline();
+    exportButton.disabled = busy || !item.cuesText.trim();
+    namedButton.disabled = exportButton.disabled;
     const ready = new Promise((resolve, reject) => {
       video.addEventListener('loadedmetadata', resolve, { once: true });
       video.addEventListener('error', () => reject(new Error(`浏览器无法预览 ${item.file.name}`)), { once: true });
@@ -448,7 +465,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     const width = Math.max(available, duration * timelineScale);
     timelineContent.style.width = `${54 + width}px`;
     cueList.style.width = `${width}px`;
-    const tickStep = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find((step) => duration / step <= 200 && step * timelineScale >= 70) || 600;
+    const tickStep = timelineTickStep(duration, timelineScale);
     for (let second = 0; second <= duration; second += tickStep) {
       const tick = document.createElement('span');
       tick.className = 'subtitle-tick';
@@ -502,27 +519,51 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
           if (busy || event.button !== 0) return;
           event.preventDefault();
           video.pause();
+          const originalPlayhead = video.currentTime;
           selectCue(index);
           const original = { ...cues[index] };
           const initialX = event.clientX;
           const limit = timelineDuration(cues);
+          const snapTargets = [0, limit, originalPlayhead, ...cues.flatMap((other, otherIndex) => otherIndex === index ? [] : [other.start, other.end])];
+          const tickStep = timelineTickStep(limit, timelineScale);
+          for (let second = tickStep; second < limit; second += tickStep) snapTargets.push(second);
           target.setPointerCapture(event.pointerId);
           clip.classList.add('dragging');
           const move = (moveEvent) => {
             const delta = Math.round((moveEvent.clientX - initialX) / timelineScale * 100) / 100;
             let start = original.start;
             let end = original.end;
+            let snapped = null;
             if (mode === 'move') {
               start = clamp(original.start + delta, 0, Math.max(0, limit - (original.end - original.start)));
               end = start + (original.end - original.start);
-            } else if (mode === 'start') start = clamp(original.start + delta, 0, original.end - 0.1);
-            else end = clamp(original.end + delta, original.start + 0.1, limit);
+              const startSnap = nearestSnap(start, snapTargets, timelineScale);
+              const endSnap = nearestSnap(end, snapTargets, timelineScale);
+              if (startSnap && (!endSnap || startSnap.distance <= endSnap.distance)) snapped = { ...startSnap, edge: 'start' };
+              else if (endSnap) snapped = { ...endSnap, edge: 'end' };
+              if (snapped) {
+                start = clamp(start + snapped.time - (snapped.edge === 'start' ? start : end), 0, Math.max(0, limit - (original.end - original.start)));
+                end = start + (original.end - original.start);
+              }
+            } else if (mode === 'start') {
+              start = clamp(original.start + delta, 0, original.end - 0.1);
+              snapped = nearestSnap(start, snapTargets, timelineScale);
+              if (snapped) start = clamp(snapped.time, 0, original.end - 0.1);
+            } else {
+              end = clamp(original.end + delta, original.start + 0.1, limit);
+              snapped = nearestSnap(end, snapTargets, timelineScale);
+              if (snapped) end = clamp(snapped.time, original.start + 0.1, limit);
+            }
+            if (snapped && Math.abs((mode === 'end' ? end : mode === 'start' || snapped.edge === 'start' ? start : end) - snapped.time) > 0.011) snapped = null;
+            snapGuide.hidden = !snapped;
+            if (snapped) snapGuide.style.left = `${54 + snapped.time * timelineScale}px`;
             updateClip({ ...original, start: Math.round(start * 100) / 100, end: Math.round(end * 100) / 100 });
             video.currentTime = Math.min(cues[index].start + 0.01, video.duration || cues[index].start + 0.01);
           };
           const finish = () => {
             target.removeEventListener('pointermove', move);
             clip.classList.remove('dragging');
+            snapGuide.hidden = true;
             renderTimeline();
           };
           target.addEventListener('pointermove', move);
@@ -603,16 +644,45 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
   video.addEventListener('loadedmetadata', () => {
     const ratio = video.videoWidth / video.videoHeight;
     videoFrame.style.aspectRatio = String(ratio);
-    videoFrame.style.maxWidth = `${Math.min(850, Math.round(480 * ratio))}px`;
+    videoFrame.style.maxWidth = `${Math.min(1100, Math.round(560 * ratio))}px`;
     addCueButton.disabled = busy || !selectedFile;
     renderTimeline();
   });
   for (const eventName of ['timeupdate', 'seeked', 'play']) video.addEventListener(eventName, updatePreview);
-  timelineRuler.addEventListener('click', (event) => {
-    if (busy || !selectedFile) return;
-    const seconds = (event.clientX - timelineRuler.getBoundingClientRect().left - 54) / timelineScale;
-    video.currentTime = clamp(seconds, 0, Number.isFinite(video.duration) ? video.duration : timelineDuration(parseCues()));
-    updatePreview();
+  timelineViewport.addEventListener('pointerdown', (event) => {
+    if (busy || !selectedFile || event.button !== 0 || event.target.closest('.subtitle-cue-clip')) return;
+    const bounds = timelineViewport.getBoundingClientRect();
+    if (event.clientY - bounds.top >= timelineViewport.clientHeight) return;
+    event.preventDefault();
+    const originX = event.clientX;
+    const originScroll = timelineViewport.scrollLeft;
+    const onRuler = !!event.target.closest('.subtitle-timeline-ruler');
+    const contentX = originX - timelineContent.getBoundingClientRect().left;
+    const scrub = onRuler && Math.abs(contentX - (54 + video.currentTime * timelineScale)) < 12;
+    let moved = false;
+    timelineViewport.setPointerCapture(event.pointerId);
+    timelineViewport.classList.add('panning');
+    const move = (moveEvent) => {
+      if (Math.abs(moveEvent.clientX - originX) > 3) moved = true;
+      if (!moved) return;
+      if (scrub) {
+        const seconds = (moveEvent.clientX - timelineContent.getBoundingClientRect().left - 54) / timelineScale;
+        video.currentTime = clamp(seconds, 0, Number.isFinite(video.duration) ? video.duration : timelineDuration(parseCues()));
+        updatePreview();
+      } else timelineViewport.scrollLeft = originScroll + originX - moveEvent.clientX;
+    };
+    const finish = (finishEvent) => {
+      timelineViewport.removeEventListener('pointermove', move);
+      timelineViewport.classList.remove('panning');
+      if (finishEvent.type === 'pointerup' && !moved && onRuler) {
+        const seconds = (originX - timelineContent.getBoundingClientRect().left - 54) / timelineScale;
+        video.currentTime = clamp(seconds, 0, Number.isFinite(video.duration) ? video.duration : timelineDuration(parseCues()));
+        updatePreview();
+      }
+    };
+    timelineViewport.addEventListener('pointermove', move);
+    timelineViewport.addEventListener('pointerup', finish, { once: true });
+    timelineViewport.addEventListener('pointercancel', finish, { once: true });
   });
   addCueButton.addEventListener('click', () => {
     if (busy || !selectedFile) return;
