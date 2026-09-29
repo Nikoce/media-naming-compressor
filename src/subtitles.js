@@ -1,4 +1,5 @@
 import { fetchFile } from '@ffmpeg/util';
+import { cuesFromWords, hardCutCues } from './caption-timing.js';
 
 const $ = (id) => document.getElementById(id);
 const fileInput = $('subtitleFile');
@@ -40,7 +41,7 @@ const alignButtons = [...document.querySelectorAll('[data-align]')];
 const centerButton = $('subtitleCenter');
 const bottomCenterButton = $('subtitleBottomCenter');
 let sourceUrl;
-let transcriber;
+let transcriberLoading;
 let busy = false;
 let selectedFile = null;
 let currentStyle = 'classic';
@@ -201,6 +202,8 @@ async function getAudio(ffmpeg, file) {
 
 async function burnCues(ffmpeg, file, cues, style, options, width = video.videoWidth, height = video.videoHeight) {
   if (!width || !height) throw new Error('无法读取视频尺寸。');
+  cues = hardCutCues(cues);
+  if (!cues.length) throw new Error('没有可导出的字幕。');
   const prefix = `caption-${crypto.randomUUID()}`;
   const input = `${prefix}-source${file.name.match(/\.[^.]+$/)?.[0] || '.mp4'}`;
   const output = `${prefix}-output.mp4`;
@@ -223,7 +226,7 @@ async function burnCues(ffmpeg, file, cues, style, options, width = video.videoW
     const filters = cues.map((cue, i) => {
       const before = i ? `[v${i}]` : '[0:v]';
       const after = `[v${i + 1}]`;
-      return `${before}[${i + 1}:v]overlay=0:${captionY(height, bandHeight, options.positionY)}:enable='between(t,${cue.start},${cue.end})':eof_action=repeat${after}`;
+      return `${before}[${i + 1}:v]overlay=0:${captionY(height, bandHeight, options.positionY)}:enable='gte(t,${cue.start})*lt(t,${cue.end})':eof_action=repeat${after}`;
     }).join(';');
     args.push('-filter_complex', filters, '-map', `[v${cues.length}]`, '-map', '0:a?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', output);
     const code = await ffmpeg.exec(args);
@@ -394,24 +397,27 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     item.status = `正在识别 ${index + 1}/${items.length}`;
     item.error = '';
     renderBatchList();
-    const audio = await getAudio(await ensureFFmpeg(), item.file);
-    if (!transcriber) {
+    if (!transcriberLoading) {
       setStatus('正在加载语音模型…');
-      const { pipeline } = await import('@huggingface/transformers');
-      transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny', { dtype: 'q8' });
+      transcriberLoading = import('@huggingface/transformers')
+        .then(({ pipeline }) => pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny', { dtype: 'q8' }))
+        .catch((error) => { transcriberLoading = null; throw error; });
     }
+    // Model loading and audio extraction are independent and can run together.
+    const audioLoading = ensureFFmpeg().then((ffmpeg) => getAudio(ffmpeg, item.file));
+    const [audio, transcriber] = await Promise.all([audioLoading, transcriberLoading]);
     setStatus(`正在识别 ${index + 1}/${items.length}：${item.file.name}`);
-    const result = await transcriber(audio, { return_timestamps: true, chunk_length_s: 30 });
-    const chunks = result.chunks || [];
-    if (!chunks.length) throw new Error('没有识别到可用的语音字幕。');
-    item.cuesText = chunks.map((chunk) => `${Math.max(0, chunk.timestamp[0]).toFixed(2)} | ${(chunk.timestamp[1] ?? chunk.timestamp[0] + 2).toFixed(2)} | ${chunk.text.trim().replace(/\s+/g, ' ')}`).join('\n');
-    item.status = `已生成 ${chunks.length} 条字幕`;
+    const result = await transcriber(audio, { return_timestamps: 'word', chunk_length_s: 30, stride_length_s: 2 });
+    const cues = cuesFromWords(result.chunks || []);
+    if (!cues.length) throw new Error('没有识别到可用的语音字幕。');
+    item.cuesText = serializeCues(cues);
+    item.status = `已生成 ${cues.length} 条字幕`;
     if (activeIndex === index) {
       cuesInput.value = item.cuesText;
       editor.hidden = false;
       $('subtitleEditorEmpty').hidden = true;
       renderTimeline();
-      video.currentTime = Math.max(0, chunks[0].timestamp[0]);
+      video.currentTime = cues[0].start;
       updatePreview();
     }
     renderBatchList();
@@ -429,8 +435,10 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     context.clearRect(0, 0, width, height);
     let cues = [];
     try { cues = parseCues(); } catch { $('subtitlePreviewStatus').textContent = '字幕格式需检查'; return; }
-    const activeIndex = cues.findIndex((cue) => video.currentTime >= cue.start && video.currentTime <= cue.end);
-    const cue = activeIndex >= 0 ? cues[activeIndex] : (editor.hidden ? { text: '字幕效果预览' } : null);
+    const displayCues = hardCutCues(cues);
+    const cue = displayCues.find((entry) => video.currentTime >= entry.start && video.currentTime < entry.end)
+      || (editor.hidden ? { text: '字幕效果预览' } : null);
+    const activeIndex = cue && !editor.hidden ? cues.findIndex((entry) => entry.start === cue.start && entry.text === cue.text) : -1;
     if (cue) {
       const bandHeight = captionBandHeight(width, height, currentOptions);
       const y = captionY(height, bandHeight, currentOptions.positionY);
