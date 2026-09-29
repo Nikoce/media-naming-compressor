@@ -295,6 +295,16 @@ h1 {
 .subtitle-property input[type="color"] { width: 48px; height: 34px; padding: 3px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; cursor: pointer; }
 .subtitle-property select { width: 100%; min-height: 36px; padding: 5px 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--ink); }
 .subtitle-color-property { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.subtitle-position-editor { display: grid; gap: 11px; width: 100%; max-width: 360px; padding-top: 14px; border-top: 1px dashed var(--line); }
+.subtitle-position-editor > strong { font-size: 12px; }
+.subtitle-position-pad { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid #647a88; border-radius: 7px; background: linear-gradient(135deg,#243a51,#111c2b); cursor: crosshair; touch-action: none; }
+.subtitle-position-crosshair { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(to right,transparent calc(50% - .5px),rgba(255,255,255,.22) 50%,transparent calc(50% + .5px)),linear-gradient(to bottom,transparent calc(50% - .5px),rgba(255,255,255,.22) 50%,transparent calc(50% + .5px)); }
+.subtitle-position-marker { position: absolute; left: 50%; top: 85%; min-width: 48px; padding: 3px 8px; transform: translate(-50%,-50%); border: 1px solid #ffffff; border-radius: 4px; background: rgba(11,21,34,.82); color: #fff; box-shadow: 0 0 0 2px rgba(11,21,34,.48); font-size: 11px; font-weight: 800; cursor: grab; touch-action: none; user-select: none; }
+.subtitle-position-marker.dragging { cursor: grabbing; }
+.subtitle-position-presets { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+.subtitle-position-presets button { min-width: 0; padding: 7px 4px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--ink); font-size: 11px; font-weight: 750; white-space: nowrap; }
+.subtitle-position-presets button[aria-pressed="true"] { border-color: var(--accent); background: #e9f5ee; color: var(--accent); }
+.subtitle-position-presets button:disabled { opacity: .55; cursor: not-allowed; }
 .subtitle-box-properties { display: grid; gap: 14px; padding-top: 13px; border-top: 1px dashed var(--line); }
 .subtitle-box-properties[hidden] { display: none; }
 .subtitle-style-note { margin: 16px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }

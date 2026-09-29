@@ -238,13 +238,22 @@
             <label class="subtitle-property subtitle-color-property"><span>字体颜色</span><input id="subtitleTextColor" type="color" value="#ffffff" /></label>
             <label class="subtitle-property subtitle-color-property"><span>描边颜色</span><input id="subtitleOutlineColor" type="color" value="#111111" /></label>
             <label class="subtitle-property"><span>描边粗细 <output id="subtitleOutlineValue" for="subtitleOutline">13%</output></span><input id="subtitleOutline" type="range" min="0" max="20" step="1" value="13" /></label>
-            <label class="subtitle-property"><span>显示位置</span><select id="subtitlePosition"><option value="bottom">底部</option><option value="middle">中部</option><option value="top">顶部</option></select></label>
+            <div class="subtitle-position-editor">
+              <strong>字幕位置</strong>
+              <div class="subtitle-position-pad" id="subtitlePositionPad" role="group" aria-label="字幕位置控制区">
+                <span class="subtitle-position-crosshair" aria-hidden="true"></span>
+                <button class="subtitle-position-marker" id="subtitlePositionMarker" type="button" aria-label="拖动调整字幕位置">字幕</button>
+              </div>
+              <div class="subtitle-position-presets" role="group" aria-label="常用字幕位置"><button id="subtitleBottomCenter" type="button" aria-pressed="true">底部居中</button><button id="subtitleCenter" type="button" aria-pressed="false">画面居中</button></div>
+              <label class="subtitle-property"><span>水平位置 <output id="subtitlePositionXValue" for="subtitlePositionX">50%</output></span><input id="subtitlePositionX" type="range" min="10" max="90" step="1" value="50" /></label>
+              <label class="subtitle-property"><span>垂直位置 <output id="subtitlePositionYValue" for="subtitlePositionY">85%</output></span><input id="subtitlePositionY" type="range" min="10" max="90" step="1" value="85" /></label>
+            </div>
             <div class="subtitle-box-properties" id="subtitleBoxProperties" hidden>
               <label class="subtitle-property subtitle-color-property"><span>底框颜色</span><input id="subtitleBoxColor" type="color" value="#000000" /></label>
               <label class="subtitle-property"><span>底框不透明度 <output id="subtitleBoxOpacityValue" for="subtitleBoxOpacity">78%</output></span><input id="subtitleBoxOpacity" type="range" min="0" max="100" step="5" value="80" /></label>
             </div>
           </div>
-          <p class="subtitle-style-note">每个视频单独保存设置，导出时会应用同样效果。</p>
+          <p class="subtitle-style-note">拖动定位点或滑杆调整位置。每个视频单独保存设置，导出时会应用同样效果。</p>
         </aside>
       </div>
     </section>

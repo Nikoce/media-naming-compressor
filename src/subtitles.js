@@ -28,11 +28,16 @@ const styleControls = {
   textColor: $('subtitleTextColor'),
   outlineColor: $('subtitleOutlineColor'),
   outline: $('subtitleOutline'),
-  position: $('subtitlePosition'),
+  positionX: $('subtitlePositionX'),
+  positionY: $('subtitlePositionY'),
   boxColor: $('subtitleBoxColor'),
   boxOpacity: $('subtitleBoxOpacity'),
 };
 const styleResetButton = $('subtitleStyleReset');
+const positionPad = $('subtitlePositionPad');
+const positionMarker = $('subtitlePositionMarker');
+const centerButton = $('subtitleCenter');
+const bottomCenterButton = $('subtitleBottomCenter');
 let sourceUrl;
 let transcriber;
 let busy = false;
@@ -70,7 +75,8 @@ function defaultCaptionOptions(style) {
     textColor: style === 'yellow' ? '#ffe547' : '#ffffff',
     outlineColor: '#111111',
     outline: style === 'boxed' ? 0 : 13,
-    position: 'bottom',
+    positionX: 50,
+    positionY: 85,
     boxColor: '#000000',
     boxOpacity: 80,
   };
@@ -79,7 +85,7 @@ function defaultCaptionOptions(style) {
 function setStatus(message) { status.textContent = message; }
 function setBusy(value) {
   busy = value;
-  for (const element of [fileInput, exportButton, namedButton, cuesInput, addCueButton, deleteCueButton, $('subtitleZoomIn'), $('subtitleZoomOut'), styleResetButton, ...Object.values(styleControls), ...document.querySelectorAll('.subtitle-style-card')]) element.disabled = value;
+  for (const element of [fileInput, exportButton, namedButton, cuesInput, addCueButton, deleteCueButton, $('subtitleZoomIn'), $('subtitleZoomOut'), styleResetButton, centerButton, bottomCenterButton, positionMarker, ...Object.values(styleControls), ...document.querySelectorAll('.subtitle-style-card')]) element.disabled = value;
   exportButton.disabled = value || !selectedFile || !items[activeIndex]?.cuesText.trim();
   namedButton.disabled = exportButton.disabled;
   transcribeButton.disabled = value || !selectedFile;
@@ -111,14 +117,11 @@ function captionFontSize(width, height, options) {
 }
 
 function captionBandHeight(width, height, options) {
-  return Math.min(height, Math.max(80, Math.round(height * 0.22 * options.fontSize / 100), Math.round(captionFontSize(width, height, options) * 3.5)));
+  return Math.min(height, Math.max(44, Math.round(height * 0.22 * options.fontSize / 100), Math.round(captionFontSize(width, height, options) * 3.5)));
 }
 
-function captionY(height, bandHeight, position) {
-  const margin = Math.round(height * 0.03);
-  if (position === 'top') return margin;
-  if (position === 'middle') return Math.max(0, Math.round((height - bandHeight) / 2));
-  return Math.max(0, height - bandHeight - margin);
+function captionY(height, bandHeight, positionY) {
+  return clamp(Math.round(height * positionY / 100 - bandHeight / 2), 0, height - bandHeight);
 }
 
 function hexRgba(hex, opacity) {
@@ -131,7 +134,8 @@ function drawCaption(context, cue, width, height, bandHeight, style, options) {
   context.font = `800 ${fontSize}px Arial, "Microsoft YaHei", sans-serif`;
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  const maxWidth = width * 0.88;
+  const centerX = width * options.positionX / 100;
+  const maxWidth = Math.max(width * 0.16, Math.min(width * 0.88, 2 * Math.min(centerX, width - centerX) - width * 0.04));
   const chunks = cue.text.match(/[A-Za-z0-9]+(?:['’._-][A-Za-z0-9]+)*\s*|./gu) || [];
   const lines = [];
   let line = '';
@@ -145,16 +149,18 @@ function drawCaption(context, cue, width, height, bandHeight, style, options) {
   const top = Math.max(fontSize / 2 + 4, (bandHeight - visibleLines.length * lineHeight) / 2 + lineHeight / 2);
   if (style === 'boxed') {
     context.fillStyle = hexRgba(options.boxColor, options.boxOpacity);
-    context.fillRect(width * 0.045, Math.max(0, top - lineHeight * 0.65), width * 0.91, Math.min(bandHeight, visibleLines.length * lineHeight + 14));
+    const textWidth = Math.min(maxWidth, Math.max(...visibleLines.map((text) => context.measureText(text).width), 0));
+    const boxWidth = Math.min(width, textWidth + fontSize * 0.8);
+    context.fillRect(clamp(centerX - boxWidth / 2, 0, width - boxWidth), Math.max(0, top - lineHeight * 0.65), boxWidth, Math.min(bandHeight, visibleLines.length * lineHeight + 14));
   }
   visibleLines.forEach((text, index) => {
     const y = top + index * lineHeight;
     context.lineWidth = fontSize * options.outline / 100;
     context.strokeStyle = options.outlineColor;
     context.lineJoin = 'round';
-    if (options.outline > 0) context.strokeText(text, width / 2, y, maxWidth);
+    if (options.outline > 0) context.strokeText(text, centerX, y, maxWidth);
     context.fillStyle = options.textColor;
-    context.fillText(text, width / 2, y, maxWidth);
+    context.fillText(text, centerX, y, maxWidth);
   });
 }
 
@@ -211,7 +217,7 @@ async function burnCues(ffmpeg, file, cues, style, options, width = video.videoW
     const filters = cues.map((cue, i) => {
       const before = i ? `[v${i}]` : '[0:v]';
       const after = `[v${i + 1}]`;
-      return `${before}[${i + 1}:v]overlay=0:${captionY(height, bandHeight, options.position)}:enable='between(t,${cue.start},${cue.end})':eof_action=repeat${after}`;
+      return `${before}[${i + 1}:v]overlay=0:${captionY(height, bandHeight, options.positionY)}:enable='between(t,${cue.start},${cue.end})':eof_action=repeat${after}`;
     }).join(';');
     args.push('-filter_complex', filters, '-map', `[v${cues.length}]`, '-map', '0:a?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', output);
     const code = await ffmpeg.exec(args);
@@ -233,6 +239,12 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     $('subtitleFontSizeValue').textContent = `${currentOptions.fontSize}%`;
     $('subtitleOutlineValue').textContent = `${currentOptions.outline}%`;
     $('subtitleBoxOpacityValue').textContent = `${currentOptions.boxOpacity}%`;
+    $('subtitlePositionXValue').textContent = `${currentOptions.positionX}%`;
+    $('subtitlePositionYValue').textContent = `${currentOptions.positionY}%`;
+    positionMarker.style.left = `${currentOptions.positionX}%`;
+    positionMarker.style.top = `${currentOptions.positionY}%`;
+    centerButton.setAttribute('aria-pressed', String(currentOptions.positionX === 50 && currentOptions.positionY === 50));
+    bottomCenterButton.setAttribute('aria-pressed', String(currentOptions.positionX === 50 && currentOptions.positionY === 85));
     $('subtitleBoxProperties').hidden = currentStyle !== 'boxed';
   }
 
@@ -413,7 +425,7 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     const cue = activeIndex >= 0 ? cues[activeIndex] : (editor.hidden ? { text: '字幕效果预览' } : null);
     if (cue) {
       const bandHeight = captionBandHeight(width, height, currentOptions);
-      const y = captionY(height, bandHeight, currentOptions.position);
+      const y = captionY(height, bandHeight, currentOptions.positionY);
       context.save();
       context.translate(0, y);
       drawCaption(context, cue, width, height, bandHeight, currentStyle, currentOptions);
@@ -635,6 +647,44 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
   }));
   for (const [name, control] of Object.entries(styleControls)) control.addEventListener('input', () => {
     currentOptions[name] = control.type === 'range' ? Number(control.value) : control.value;
+    saveStyleOptions();
+  });
+  for (const [button, x, y] of [[centerButton, 50, 50], [bottomCenterButton, 50, 85]]) button.addEventListener('click', () => {
+    if (busy) return;
+    currentOptions.positionX = x;
+    currentOptions.positionY = y;
+    saveStyleOptions();
+  });
+  positionPad.addEventListener('pointerdown', (event) => {
+    if (busy || event.button !== 0) return;
+    event.preventDefault();
+    positionPad.setPointerCapture(event.pointerId);
+    positionMarker.classList.add('dragging');
+    const move = (pointerEvent) => {
+      const rect = positionPad.getBoundingClientRect();
+      currentOptions.positionX = Math.round(clamp((pointerEvent.clientX - rect.left) / rect.width * 100, 10, 90));
+      currentOptions.positionY = Math.round(clamp((pointerEvent.clientY - rect.top) / rect.height * 100, 10, 90));
+      saveStyleOptions();
+    };
+    const finish = () => {
+      positionPad.removeEventListener('pointermove', move);
+      positionPad.removeEventListener('pointerup', finish);
+      positionPad.removeEventListener('pointercancel', finish);
+      positionMarker.classList.remove('dragging');
+    };
+    move(event);
+    positionPad.addEventListener('pointermove', move);
+    positionPad.addEventListener('pointerup', finish);
+    positionPad.addEventListener('pointercancel', finish);
+  });
+  positionMarker.addEventListener('keydown', (event) => {
+    if (busy || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    const amount = event.shiftKey ? 5 : 1;
+    if (event.key === 'ArrowLeft') currentOptions.positionX = clamp(currentOptions.positionX - amount, 10, 90);
+    if (event.key === 'ArrowRight') currentOptions.positionX = clamp(currentOptions.positionX + amount, 10, 90);
+    if (event.key === 'ArrowUp') currentOptions.positionY = clamp(currentOptions.positionY - amount, 10, 90);
+    if (event.key === 'ArrowDown') currentOptions.positionY = clamp(currentOptions.positionY + amount, 10, 90);
     saveStyleOptions();
   });
   styleResetButton.addEventListener('click', () => {
