@@ -1117,6 +1117,29 @@ function showSubtitleOutput(blob, outputName, download = true) {
   $('subtitleResults').appendChild(row);
   if (download) triggerDownload(output.url, outputName);
 }
+function showSubtitleTransferReport(failures = [], skipped = []) {
+  const report = $('subtitleTransferReport');
+  report.replaceChildren();
+  report.hidden = !failures.length && !skipped.length;
+  if (report.hidden) return;
+  const heading = document.createElement('strong');
+  heading.textContent = `${failures.length + skipped.length} 个视频未发送到命名`;
+  const list = document.createElement('ul');
+  for (const { name, reason } of failures) {
+    const item = document.createElement('li');
+    item.textContent = `${name}：${reason}`;
+    list.appendChild(item);
+  }
+  for (const name of skipped) {
+    const item = document.createElement('li');
+    item.textContent = `${name}：没有字幕`;
+    list.appendChild(item);
+  }
+  const back = document.createElement('a');
+  back.href = '#subtitles';
+  back.textContent = '返回字幕页查看并重试';
+  report.append(heading, list, back);
+}
 function syncPage() {
   const subtitles = window.location.hash === '#subtitles';
   $('namingPage').hidden = subtitles;
@@ -1133,6 +1156,7 @@ setupSubtitles({
     if (state.processing || state.translating) throw new Error('请等待当前批量任务完成。');
     const outputName = `${sourceBaseName(source.name)}-字幕.mp4`;
     if (named) {
+      showSubtitleTransferReport();
       const subtitled = new File([blob], outputName, { type: 'video/mp4' });
       await addFiles([subtitled], new Map([[subtitled, { source, metadata }]]));
       const item = state.files.at(-1);
@@ -1156,7 +1180,7 @@ setupSubtitles({
     triggerDownload(url, `自动字幕-${todayYYMMDD()}.zip`);
     window.setTimeout(() => URL.revokeObjectURL(url), 30000);
   },
-  async onBatchSend(outputs) {
+  async onBatchSend(outputs, failures = [], skipped = []) {
     if (state.processing || state.translating) throw new Error('请等待当前批量任务完成。');
     const names = subtitleOutputNames(outputs);
     const files = outputs.map(({ blob }, index) => new File([blob], names[index], { type: 'video/mp4' }));
@@ -1165,8 +1189,8 @@ setupSubtitles({
     await addFiles(files, prepared);
     const failed = state.files.slice(start).filter((item) => item.error);
     window.location.hash = '#naming';
-    $('notice').textContent = `已发送 ${files.length} 个字幕视频。补全命名字段后，使用下方按钮导出；字幕成品无需再次压制。`;
-    if (failed.length) throw new Error(`${failed.length} 个字幕视频的信息读取失败，请查看素材列表。`);
+    showSubtitleTransferReport([...failures, ...failed.map((item) => ({ name: item.file.name, reason: item.error }))], skipped);
+    $('notice').textContent = `已发送 ${files.length - failed.length} 个字幕视频${failures.length || skipped.length || failed.length ? `，${failures.length + skipped.length + failed.length} 个未完成，详见下方` : ''}。补全命名字段后使用下方按钮导出。`;
     fields.product.focus();
   },
 });

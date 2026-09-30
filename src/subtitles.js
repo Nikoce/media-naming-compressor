@@ -189,6 +189,41 @@ function concatImageList(segments) {
   return `${lines.join('\n')}\n`;
 }
 
+async function probeVideoMetadata(ffmpeg, input, prefix) {
+  const path = `${prefix}-probe.json`;
+  const framePath = `${prefix}-frame.png`;
+  try {
+    const code = await ffmpeg.ffprobe([
+      '-v', 'error', '-print_format', 'json', '-show_format', '-show_streams',
+      '-o', path, input,
+    ]);
+    if (code !== 0) {
+      const frameCode = await ffmpeg.exec(['-y', '-i', input, '-frames:v', '1', '-an', framePath]);
+      if (frameCode !== 0) throw new Error('无法读取视频画面，请检查文件是否损坏或格式是否受支持。');
+      const bytes = await ffmpeg.readFile(framePath);
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+      try {
+        return { width: bitmap.width, height: bitmap.height, duration: 0 };
+      } finally { bitmap.close(); }
+    }
+    const bytes = await ffmpeg.readFile(path);
+    const probe = JSON.parse(new TextDecoder().decode(bytes));
+    const stream = probe.streams?.find((entry) => entry.codec_type === 'video');
+    if (!stream) throw new Error('文件中没有视频轨道。');
+    const rotation = Number(stream.side_data_list?.find((entry) => Number.isFinite(Number(entry.rotation)))?.rotation
+      ?? stream.tags?.rotate ?? 0);
+    const rotated = Math.abs(rotation % 180) === 90;
+    return {
+      width: Number(rotated ? stream.height : stream.width),
+      height: Number(rotated ? stream.width : stream.height),
+      duration: Number(probe.format?.duration || stream.duration || 0),
+    };
+  } finally {
+    await ffmpeg.deleteFile(path).catch(() => {});
+    await ffmpeg.deleteFile(framePath).catch(() => {});
+  }
+}
+
 async function getAudio(ffmpeg, file) {
   const input = `asr-input-${crypto.randomUUID()}${file.name.match(/\.[^.]+$/)?.[0] || '.mp4'}`;
   const audio = `asr-${crypto.randomUUID()}.wav`;
@@ -208,8 +243,7 @@ async function getAudio(ffmpeg, file) {
   }
 }
 
-async function burnCues(ffmpeg, file, cues, style, options, width = video.videoWidth, height = video.videoHeight) {
-  if (!width || !height) throw new Error('无法读取视频尺寸。');
+async function burnCues(ffmpeg, file, cues, style, options, metadata = {}) {
   cues = hardCutCues(cues);
   if (!cues.length) throw new Error('没有可导出的字幕。');
   const prefix = `caption-${crypto.randomUUID()}`;
@@ -222,6 +256,11 @@ async function burnCues(ffmpeg, file, cues, style, options, width = video.videoW
   ffmpeg.on('log', onLog);
   try {
     await ffmpeg.writeFile(input, await fetchFile(file));
+    const validMetadata = Number.isFinite(metadata.width) && metadata.width > 0
+      && Number.isFinite(metadata.height) && metadata.height > 0;
+    const sourceMetadata = validMetadata ? metadata : await probeVideoMetadata(ffmpeg, input, prefix);
+    const { width, height } = sourceMetadata;
+    if (!width || !height) throw new Error('无法读取视频尺寸。');
     const bandHeight = captionBandHeight(width, height, options);
     const blankCanvas = document.createElement('canvas');
     blankCanvas.width = width;
@@ -256,7 +295,7 @@ async function burnCues(ffmpeg, file, cues, style, options, width = video.videoW
       throw new Error(`字幕合成失败：${log.slice(-8).join(' ').slice(0, 900) || `FFmpeg 退出码 ${code}`}`);
     }
     const bytes = await ffmpeg.readFile(output);
-    return new Blob([bytes], { type: 'video/mp4' });
+    return { blob: new Blob([bytes], { type: 'video/mp4' }), metadata: sourceMetadata };
   } finally {
     ffmpeg.off('log', onLog);
     for (const path of [input, output, manifest, ...paths]) await ffmpeg.deleteFile(path).catch(() => {});
@@ -392,8 +431,21 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     exportButton.disabled = busy || !item.cuesText.trim();
     namedButton.disabled = exportButton.disabled;
     const ready = new Promise((resolve, reject) => {
-      video.addEventListener('loadedmetadata', resolve, { once: true });
-      video.addEventListener('error', () => reject(new Error(`浏览器无法预览 ${item.file.name}`)), { once: true });
+      const cleanup = () => {
+        video.removeEventListener('loadedmetadata', onMetadata);
+        video.removeEventListener('error', onError);
+      };
+      const onMetadata = () => {
+        cleanup();
+        item.metadata = { width: video.videoWidth, height: video.videoHeight, duration: video.duration };
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error(`浏览器无法预览 ${item.file.name}，仍可识别和导出字幕`));
+      };
+      video.addEventListener('loadedmetadata', onMetadata);
+      video.addEventListener('error', onError);
     });
     video.src = sourceUrl;
     video.load();
@@ -823,8 +875,9 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
     setBusy(true);
     try {
       setStatus('正在合成字幕视频…');
-      const blob = await burnCues(await ensureFFmpeg(), file, cues, currentStyle, currentOptions);
-      await onExport(blob, file, named, { width: video.videoWidth, height: video.videoHeight, duration: video.duration });
+      const { blob, metadata } = await burnCues(await ensureFFmpeg(), file, cues, currentStyle, currentOptions,
+        items[activeIndex]?.metadata);
+      await onExport(blob, file, named, metadata);
       setStatus(named ? '已发送到命名页面' : 'MP4 已导出');
     } catch (error) { setStatus('导出失败'); window.alert(error.message || '导出失败'); }
     finally { setBusy(false); }
@@ -834,10 +887,11 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
   async function processBatch(mode) {
     if (busy) return;
     const pending = items.map((item, index) => ({ item, index })).filter(({ item }) => item.cuesText.trim());
+    const skipped = items.filter((item) => !item.cuesText.trim()).map((item) => item.file.name);
     if (!pending.length) { window.alert('请先批量识别或填写字幕。'); return; }
     setBusy(true);
     const outputs = [];
-    let failed = 0;
+    const failures = [];
     try {
       const ffmpeg = await ensureFFmpeg();
       for (const { item, index } of pending) {
@@ -847,21 +901,28 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onBatchExport, onBatchS
           item.status = `正在导出 ${index + 1}/${items.length}`;
           item.error = '';
           setStatus(`${item.status}：${item.file.name}`);
-          await activateItem(index);
-          renderBatchList();
-          const blob = await burnCues(ffmpeg, item.file, cues, item.style, item.options);
-          outputs.push({ blob, source: item.file, metadata: { width: video.videoWidth, height: video.videoHeight, duration: video.duration } });
+          const { blob, metadata } = await burnCues(ffmpeg, item.file, cues, item.style, item.options, item.metadata);
+          item.metadata = metadata;
+          outputs.push({ blob, source: item.file, metadata });
           item.status = '成品已生成';
         } catch (error) {
           item.error = error.message || '导出失败';
           item.status = '导出失败';
-          failed += 1;
+          failures.push({ name: item.file.name, reason: item.error });
         }
         renderBatchList();
       }
-      if (!outputs.length) throw new Error('所有视频导出失败，请查看视频队列中的错误。');
-      if (mode === 'zip') await onBatchExport(outputs); else await onBatchSend(outputs);
-      setStatus(`${outputs.length} 个视频已${mode === 'zip' ? '打包导出' : '发送到命名'}${failed ? `，${failed} 个失败` : ''}`);
+      if (!outputs.length) {
+        const details = failures.slice(0, 3).map(({ name, reason }) => `${name}：${reason}`).join('；');
+        throw new Error(`所有视频导出失败：${details}${failures.length > 3 ? `；其余 ${failures.length - 3} 个请查看视频队列` : ''}`);
+      }
+      if (mode === 'zip') await onBatchExport(outputs); else await onBatchSend(outputs, failures, skipped);
+      const summary = `${outputs.length} 个视频已${mode === 'zip' ? '打包导出' : '发送到命名'}`;
+      const problems = [
+        ...failures.map(({ name, reason }) => `${name}：${reason}`),
+        ...skipped.map((name) => `${name}：没有字幕`),
+      ];
+      setStatus(problems.length ? `${summary}；${problems.length} 个未完成：${problems.join('；')}` : summary);
     } catch (error) { setStatus('批量导出失败'); window.alert(error.message || '批量导出失败'); }
     finally { setBusy(false); renderBatchList(); }
   }
