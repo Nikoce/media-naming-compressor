@@ -3,6 +3,8 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
 import JSZip from 'jszip';
 import { setupSubtitles } from './subtitles.js';
+import { burnSubtitleJob } from './caption-export.js';
+import { runMediaJob } from './media-jobs.js';
 import {
   ALL_FORMATS,
   BlobSource,
@@ -266,7 +268,8 @@ function compressionOnlyNames() {
 }
 
 function isProcessing(item) {
-  return /^(正在压制|正在命名)/u.test(String(item.status || ''));
+  return state.processing && state.currentProcessingId === item.id
+    && item.status !== '输出完成' && item.status !== '输出失败';
 }
 
 function itemClass(item) {
@@ -278,6 +281,7 @@ function itemClass(item) {
 
 function statusChip(item) {
   if (item.error || item.processError || item.status === '输出失败') return { text: '异常', cls: 'error' };
+  if (isProcessing(item) && item.status.startsWith('等待')) return { text: item.status, cls: '' };
   if (isProcessing(item)) return { text: item.status.startsWith('正在命名') ? '正在命名' : (item.progress ? `${item.progress}%` : (item.engine === 'ffmpeg' ? '兼容压制' : '极速压制')), cls: '' };
   if (item.status === '输出完成') return { text: '已输出', cls: 'ok' };
   if (!item.detected) return { text: '分析中', cls: '' };
@@ -323,6 +327,7 @@ function renderVideoList() {
       '视频', detected.resolution || '读取中', detected.duration ? `${detected.duration}s` : '',
       formatFileSize(item.file.size), detected.ratio ? ratioLabel(detected.ratio) : '',
       languageFor(item) || '语言未识别',
+      item.captionJob ? `${item.captionJob.cues.length} 条字幕 · 导出时合成` : (item.readyMp4 ? '字幕已烧录' : ''),
     ].filter(Boolean).join(' · ');
     const nameClass = item.error || item.processError ? 'error' : (naming.ok ? '' : 'missing');
     const el = document.createElement('div');
@@ -604,13 +609,6 @@ async function ensureFastEngine() {
     engineStatus.textContent = '正在检测 WebCodecs 极速引擎…';
     engineStatus.className = 'engine-status loading';
     try {
-      const isSafari = /Safari/i.test(navigator.userAgent) && !/(Chrome|Chromium|CriOS|Edg|OPR)/i.test(navigator.userAgent);
-      if (isSafari) {
-        state.fastEngineSupported = false;
-        engineStatus.textContent = 'Safari 使用 FFmpeg 兼容引擎';
-        engineStatus.className = 'engine-status fallback';
-        return false;
-      }
       const supported = await canEncodeVideo('avc', {
         quality: new Quality('medium'),
         hardwareAcceleration: 'prefer-hardware',
@@ -641,9 +639,6 @@ async function ensureFFmpeg() {
     engineStatus.textContent = '正在加载 FFmpeg 兼容引擎…';
     engineStatus.className = 'engine-status loading';
     const ffmpeg = new FFmpeg();
-    ffmpeg.on('progress', ({ progress }) => {
-      updateCompressionProgress(progress);
-    });
     const base = new URL(import.meta.env.BASE_URL, window.location.href);
     await ffmpeg.load({
       coreURL: new URL('ffmpeg/ffmpeg-core.js', base).href,
@@ -665,6 +660,10 @@ async function ensureFFmpeg() {
 }
 
 async function probeWithFFmpeg(file) {
+  return runMediaJob(() => probeWithFFmpegUnlocked(file));
+}
+
+async function probeWithFFmpegUnlocked(file) {
   const ffmpeg = await ensureFFmpeg();
   const id = crypto.randomUUID();
   const extension = (file.name.match(/\.[a-z0-9]+$/i)?.[0] || '.bin').toLowerCase();
@@ -716,7 +715,8 @@ async function addFiles(fileList, prepared = new Map()) {
         ratio: ratioCode(metadata.width, metadata.height),
         language: detectLanguage(ready.source.name),
       } : null,
-      readyMp4: !!ready,
+      readyMp4: !!ready && !ready.captionJob,
+      captionJob: ready?.captionJob || null,
       error: null, processError: null, progress: 0,
     });
   }
@@ -866,6 +866,8 @@ async function transcodeWithFFmpeg(ffmpeg, item, preset, outputName) {
   const extension = (item.file.name.match(/\.[a-z0-9]+$/i)?.[0] || '.bin').toLowerCase();
   const inputPath = `input-${item.id}${extension}`;
   const outputPath = `output-${item.id}.mp4`;
+  const onProgress = ({ progress }) => updateCompressionProgress(progress);
+  ffmpeg.on('progress', onProgress);
   try {
     await ffmpeg.writeFile(inputPath, await fetchFile(item.file));
     const code = await ffmpeg.exec(['-y', '-i', inputPath, ...profileFor(preset).ffmpegArgs, outputPath]);
@@ -874,6 +876,7 @@ async function transcodeWithFFmpeg(ffmpeg, item, preset, outputName) {
     const blob = new Blob([outputData], { type: 'video/mp4' });
     return { outputName, blob, url: URL.createObjectURL(blob), engine: 'ffmpeg' };
   } finally {
+    ffmpeg.off('progress', onProgress);
     await ffmpeg.deleteFile(inputPath).catch(() => {});
     await ffmpeg.deleteFile(outputPath).catch(() => {});
   }
@@ -900,7 +903,7 @@ async function processAll(renameOutput) {
   activeButton.textContent = '正在检测极速引擎…';
   resultPanel.hidden = false;
 
-  const fastEngineAvailable = state.files.some((item) => !renameOutput || !item.readyMp4) ? await ensureFastEngine() : false;
+  const fastEngineAvailable = state.files.some((item) => !item.captionJob && (!renameOutput || !item.readyMp4)) ? await ensureFastEngine() : false;
   let ffmpeg = null;
   let usedFastEngine = false;
   let usedFallbackEngine = false;
@@ -921,11 +924,27 @@ async function processAll(renameOutput) {
     try {
       let output = null;
       let fastEngineError = null;
-      if (renameOutput && item.readyMp4) {
+      if (item.captionJob) {
+        const rendered = await burnSubtitleJob(item.captionJob, ensureFFmpeg, profileFor(preset), (stage, progress) => {
+          item.status = stage;
+          if (stage.startsWith('FFmpeg') || stage.includes('切换 FFmpeg')) item.engine = 'ffmpeg';
+          else if (stage.startsWith('WebCodecs')) item.engine = 'webcodecs';
+          if (Number.isFinite(progress)) updateCompressionProgress(progress);
+          else renderVideoList();
+        });
+        output = { outputName, blob: rendered.blob, url: URL.createObjectURL(rendered.blob), engine: rendered.engine };
+        // Only mark ready after successful burning; retries never export the original without captions.
+        item.file = new File([rendered.blob], item.file.name.replace(/\.[^.]+$/, '.mp4'), { type: 'video/mp4' });
+        item.readyMp4 = true;
+        item.captionJob = null;
+        if (rendered.engine === 'webcodecs') usedFastEngine = true; else usedFallbackEngine = true;
+      } else if (renameOutput && item.readyMp4) {
         output = { outputName, blob: item.file, url: URL.createObjectURL(item.file), engine: 'subtitle' };
       } else if (fastEngineAvailable) {
         try {
-          output = await transcodeWithMediaBunny(item, preset, outputName);
+          output = await runMediaJob(() => transcodeWithMediaBunny(item, preset, outputName), () => {
+            item.status = '等待其他视频处理任务'; renderVideoList();
+          });
           usedFastEngine = true;
         } catch (error) {
           fastEngineError = error;
@@ -942,7 +961,9 @@ async function processAll(renameOutput) {
       }
       if (!output) {
         ffmpeg ||= await ensureFFmpeg();
-        output = await transcodeWithFFmpeg(ffmpeg, item, preset, outputName);
+        output = await runMediaJob(() => transcodeWithFFmpeg(ffmpeg, item, preset, outputName), () => {
+          item.status = '等待其他视频处理任务'; renderVideoList();
+        });
         if (fastEngineError) output.fallbackReason = fastEngineError.message || String(fastEngineError);
         usedFallbackEngine = true;
       }
@@ -1152,20 +1173,19 @@ window.addEventListener('hashchange', syncPage);
 syncPage();
 setupSubtitles({
   ensureFFmpeg,
-  async onExport(blob, source, named, metadata) {
+  async onSend(job) {
     if (state.processing || state.translating) throw new Error('请等待当前批量任务完成。');
+    showSubtitleTransferReport();
+    const start = state.files.length;
+    await addFiles([job.source], new Map([[job.source, { source: job.source, metadata: job.metadata, captionJob: job }]]));
+    const item = state.files[start];
+    if (!item || item.error) throw new Error(item?.error || '发送失败');
+    window.location.hash = '#naming';
+    $('notice').textContent = '视频和字幕已加入素材列表。补全字段后导出，字幕合成与压制一次完成。';
+    fields.product.focus();
+  },
+  async onExport(blob, source) {
     const outputName = `${sourceBaseName(source.name)}-字幕.mp4`;
-    if (named) {
-      showSubtitleTransferReport();
-      const subtitled = new File([blob], outputName, { type: 'video/mp4' });
-      await addFiles([subtitled], new Map([[subtitled, { source, metadata }]]));
-      const item = state.files.at(-1);
-      if (item?.error) throw new Error(item.error);
-      window.location.hash = '#naming';
-      $('notice').textContent = '字幕视频已加入素材列表。补全命名字段后，使用下方按钮导出；字幕成品无需再次压制。';
-      fields.product.focus();
-      return;
-    }
     showSubtitleOutput(blob, outputName);
   },
   async onBatchExport(outputs) {
@@ -1182,15 +1202,15 @@ setupSubtitles({
   },
   async onBatchSend(outputs, failures = [], skipped = []) {
     if (state.processing || state.translating) throw new Error('请等待当前批量任务完成。');
-    const names = subtitleOutputNames(outputs);
-    const files = outputs.map(({ blob }, index) => new File([blob], names[index], { type: 'video/mp4' }));
-    const prepared = new Map(files.map((file, index) => [file, { source: outputs[index].source, metadata: outputs[index].metadata }]));
     const start = state.files.length;
-    await addFiles(files, prepared);
+    // Add separately: the same source File may occur twice with different captions/styles.
+    for (const job of outputs) {
+      await addFiles([job.source], new Map([[job.source, { source: job.source, metadata: job.metadata, captionJob: job }]]));
+    }
     const failed = state.files.slice(start).filter((item) => item.error);
     window.location.hash = '#naming';
     showSubtitleTransferReport([...failures, ...failed.map((item) => ({ name: item.file.name, reason: item.error }))], skipped);
-    $('notice').textContent = `已发送 ${files.length - failed.length} 个字幕视频${failures.length || skipped.length || failed.length ? `，${failures.length + skipped.length + failed.length} 个未完成，详见下方` : ''}。补全命名字段后使用下方按钮导出。`;
+    $('notice').textContent = `已发送 ${outputs.length - failed.length} 个视频及字幕${failures.length || skipped.length || failed.length ? `，${failures.length + skipped.length + failed.length} 个未完成，详见下方` : ''}。补全字段后导出，字幕合成与压制一次完成。`;
     fields.product.focus();
   },
 });

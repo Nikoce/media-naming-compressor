@@ -271,6 +271,7 @@ h1 {
 .subtitle-remove-button { align-self: center; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; }
 .subtitle-remove-button:hover { border-color: #e4b6b1; background: #fff3f1; color: var(--danger); }
 .subtitle-remove-button:focus-visible { outline: 3px solid rgba(40, 95, 192, 0.22); }
+.subtitle-relink-button { width: 100%; margin-top: 9px; padding: 9px 7px; font-size: 11px; }
 .subtitle-upload-actions { display: grid; gap: 8px; }
 .subtitle-upload-actions button { width: 100%; min-width: 0; min-height: 42px; }
 .subtitle-flow-status { margin-top: 12px; padding: 8px 10px; border-radius: 6px; background: #eef7f2; color: var(--accent); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }

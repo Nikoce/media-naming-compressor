@@ -24,7 +24,10 @@ YYMMDD_P-{产品}_H-{主题}[H重复时-01/-02...]_VL-S-{时长}_S-{尺寸}_L-{�
 - ZIP 压缩包按 `日期-产品-制作人.zip` 命名。
 - 站内独立的「自动字幕」页面（`#subtitles`）：一次选择或拖入多个视频，加入视频队列并逐个识别语音。批量识别按队列顺序运行，在浏览器内使用 Whisper 的词级时间戳生成短字幕；分段优先参考句末、逗号和气口，时长超限时避免拆开常见英文短语，常见缩写不会误判为句末。中文长词块优先在标点后切分。字幕按首词和末词的时间出现及结束，异常过长的末词时间会修正，停顿时隐藏，相邻字幕直接硬切。
 - 每个视频独立保存字幕文本和样式；切换队列中的视频即可播放预览、按时间定位和校对字幕。三种样式以实际文字效果展示。
-- 可单独烧录并导出 MP4，或将所有已有字幕的视频批量烧录并打包为 ZIP。字幕图像通过单个时间序列输入和一次叠加滤镜合成，避免字幕数量增加时滤镜链同步膨胀。字幕成品发送到「批量命名与压制」页面后会直接沿用原视频的时长与尺寸，补全命名字段后直接重命名导出，无需再次压制；普通素材仍按所选预设压制。
+- 可单独烧录并导出 MP4，或将所有已有字幕的视频批量烧录并打包为 ZIP。优先使用 MediaBunny/WebCodecs 逐帧叠加字幕，字幕图层仅在文字变化时重绘，AAC 源音轨直接复制；不支持的素材自动回退到 FFmpeg。
+- 「发送到命名」立即移交原视频和独立的字幕/样式快照，不再等待整段视频烧录。导出时按所选预设一次完成字幕合成与压制，「仅压制」也会烧录字幕；成功后再次命名可直接使用成品。发送后在字幕页继续编辑，不会改变已发送的快照，需要重新发送才会采用新修改。
+- FFmpeg 兼容路径保持字幕图片到下一个字幕或透明空白帧，保留完整显示区间；图片时间精度为毫秒，停顿和片尾不残留上一条字幕。字幕全部超出视频时长时会报错，防止导出看似成功但没有字幕的文件。
+- 视频编码、FFmpeg 读写和语音推理按任务排队；支持 Web Locks 的浏览器会协调同一浏览器、同一站点的多个窗口，避免同时争抢编码器和大量内存。等待期间会显示任务提示，字幕移交无需排队。不同浏览器或不同浏览器配置文件的窗口无法共享这把锁。
 - 常用字段历史只保存在当前浏览器的 `localStorage`。
 
 字幕规则参考：[Whisper 的词级时间戳与行宽/行数约束](https://github.com/openai/whisper/blob/main/whisper/utils.py)、[Subtitle Edit 的长行拆分与均衡](https://github.com/SubtitleEdit/subtitleedit/blob/main/docs/features/split-break-long-lines.md)、[subcap 的句界/时长/换行处理](https://github.com/bighippoman/subcap)。本项目保留短视频字幕的 2.3 秒时长上限，并按画布实际文字宽度换行。
@@ -34,7 +37,7 @@ YYMMDD_P-{产品}_H-{主题}[H重复时-01/-02...]_VL-S-{时长}_S-{尺寸}_L-{�
 - 网站托管在 GitHub Pages，不需要 Railway 或常驻服务器。
 - 媒体不离开用户电脑，不产生服务器存储和流量账单。
 - 中英互译不调用付费接口；需要最新版 Chrome 及其本地翻译模型，Safari 暂不支持该功能。
-- Mac 和 Windows 均推荐使用最新版 Chrome。Safari 会使用 FFmpeg 兼容引擎，不启用 WebCodecs 极速路径。
+- Mac 和 Windows 均按浏览器与素材的实际编解码能力选择引擎。Safari 不再被固定排除在 WebCodecs 路径外；支持当前素材的 H.264 编码和解码时启用极速路径，否则自动使用 FFmpeg 兼容引擎。字幕字体同时包含 macOS 和 Windows 的系统字体回退。
 - 压制速度、可处理文件大小仍受浏览器内存、素材编码和电脑性能限制。大型或长视频建议使用桌面版 FFmpeg。
 - 自动字幕首次使用会从 Hugging Face 下载 Whisper 模型。模型推理及视频处理在本地进行；短视频更适合浏览器处理。字幕识别结果可能有误，导出前可在文本框中校对。
 - GitHub Pages 公开站点适用于静态页面，不提供账号、云端历史或服务端任务队列。
@@ -55,6 +58,16 @@ npm run check
 npm run build
 ```
 
+`npm run check` 包含字幕快照、逐帧时间选择、越界时间与任务排队等回归检查。实际浏览器导出回归可在安装 Playwright 与 Chrome 后运行（先启动开发服务器）：
+
+```bash
+node scripts/test-caption-export.mjs
+```
+
+也可设置 `PLAYWRIGHT_MODULE` 指向已有 Playwright 的 `index.mjs`，通过 `TEST_BROWSER_CHANNEL` 指定浏览器通道，`TEST_BASE_URL` 指定开发服务器。该回归生成带 AAC 音轨的黑色视频，检查发送阶段不加载 FFmpeg、跨窗口排队、命名导出与仅压制、两种引擎导出的每帧字幕和停顿、音轨及完整时长。macOS Safari 实机仍需在 Mac 上验证，Windows 的浏览器测试不等同于 Mac 实机测试。
+
+本次优化参考 [MediaBunny 的逐帧处理接口](https://github.com/Vanilagy/mediabunny/blob/main/src/conversion.ts)、[FFmpeg 的 framesync 参数](https://ffmpeg.org/ffmpeg-filters.html#Options-for-filters-with-several-inputs-_0028framesync_0029) 和 [LosslessCut 的多实例说明](https://github.com/mifi/lossless-cut/blob/master/docs/troubleshooting.md)。
+
 `predev` 和 `prebuild` 会把 FFmpeg 回退引擎的 `@ffmpeg/core` 运行文件复制到 `public/ffmpeg/`。该目录和 `dist/` 都是生成产物，不提交到 Git。
 
 ## GitHub Pages 部署
@@ -65,4 +78,4 @@ npm run build
 
 ## 隐私
 
-源视频、压制结果和 ZIP 都只存在于当前页面的内存或浏览器下载中。关闭或刷新页面后，未下载的压制结果不会保留。
+源视频、字幕快照、压制结果和 ZIP 都只存在于当前页面的内存或浏览器下载中。关闭或刷新页面后，未下载的字幕任务和压制结果不会保留。多窗口排队只协调处理时机，不会在窗口之间共享或覆盖字幕。

@@ -179,6 +179,8 @@
           <section class="panel subtitle-batch-panel" id="subtitleBatchPanel">
             <div class="subtitle-step-heading"><span class="subtitle-step-number">02</span><div><h3>视频队列</h3><p id="subtitleBatchCount">0 个视频</p></div></div>
             <div class="subtitle-batch-list" id="subtitleBatchList"><p class="subtitle-queue-empty" id="subtitleQueueEmpty">添加视频后，在这里选择要预览和校对的文件。</p></div>
+            <input id="subtitleRelinkFile" type="file" accept="video/*,.mp4,.mov,.mkv,.webm,.avi" multiple hidden />
+            <button id="subtitleRelinkBtn" class="secondary-button subtitle-relink-button" type="button" hidden>重新选择无法读取的原视频</button>
           </section>
           <section class="panel subtitle-recognition-panel">
             <div class="subtitle-step-heading"><span class="subtitle-step-number">03</span><div><h3>识别语音</h3><p>批量识别会按队列顺序处理。</p></div></div>
@@ -220,7 +222,7 @@
           </section>
           </div>
           <div class="subtitle-export-panel">
-            <div><span class="section-kicker">导出</span><h3>批量导出成品</h3><p>仅处理队列中已有字幕的视频。</p></div>
+            <div><span class="section-kicker">导出</span><h3>批量导出成品</h3><p>发送到命名立即完成，导出时自动合成字幕。仅处理已有字幕的视频。</p></div>
             <div class="subtitle-export-groups">
               <div class="subtitle-export-group"><span>当前视频</span><div class="subtitle-actions"><button class="secondary-button" id="subtitleExportBtn" type="button" disabled>导出当前 MP4</button><button class="secondary-button" id="subtitleNameExportBtn" type="button" disabled>当前视频发送到命名</button></div></div>
               <div class="subtitle-export-group"><span>视频队列</span><div class="subtitle-batch-actions"><button class="secondary-button" id="subtitleBatchSendBtn" type="button" disabled>批量发送到命名</button><button class="primary-button" id="subtitleBatchExportBtn" type="button" disabled>批量导出 MP4（ZIP）</button></div></div>
