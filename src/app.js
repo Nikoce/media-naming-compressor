@@ -5,6 +5,7 @@ import JSZip from 'jszip';
 import { setupSubtitles } from './subtitles.js';
 import { burnSubtitleJob } from './caption-export.js';
 import { runMediaJob } from './media-jobs.js';
+import { durationPart } from './naming.js';
 import {
   ALL_FORMATS,
   BlobSource,
@@ -231,7 +232,7 @@ function finalValuesFor(item) {
 function nameFor(item) {
   if (!item) return '—';
   const values = finalValuesFor(item);
-  return `${values.date || '日期'}_P-${values.product || '产品'}_H-${values.theme || '主题'}_VL-S-${values.duration || '时长'}_S-${values.ratio || '尺寸'}_L-${values.language || '语言'}_D-${values.maker || '制作人'}_M-${values.productionTime || '制作时长'}.mp4`;
+  return `${values.date || '日期'}_P-${values.product || '产品'}_H-${values.theme || '主题'}_${durationPart(values.duration)}_S-${values.ratio || '尺寸'}_L-${values.language || '语言'}_D-${values.maker || '制作人'}_M-${values.productionTime || '制作时长'}.mp4`;
 }
 
 function sourceBaseName(fileName) {

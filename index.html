@@ -65,7 +65,7 @@
             <datalist id="themeHistory"></datalist>
           </div>
           <label class="field auto-field">
-            <span>时长 VL-S <em>自动</em></span>
+            <span>时长 VL-S/M/L <em>自动</em></span>
             <input id="duration" value="按素材自动" readonly autocomplete="off" />
           </label>
           <label class="field auto-field">
@@ -91,7 +91,8 @@
 
         <div class="naming-note">
           <span>批量规则</span>
-          <code>YYMMDD_P-{产品}_H-{主题}[H重复时-01/-02…]_VL-S-{时长}_S-{尺寸}_L-{语言}_D-{制作人}_M-{制作时长}.mp4</code>
+          <code>YYMMDD_P-{产品}_H-{主题}[H重复时-01/-02…]_VL-{S/M/L}-{时长}_S-{尺寸}_L-{语言}_D-{制作人}_M-{制作时长}.mp4</code>
+          <p>时长自动分档：0–10s → VL-S-xx，11–20s → VL-M-xx，21–30s → VL-L-xx；xx 为自动读取并四舍五入的秒数，超过 30s 归为 L。</p>
         </div>
       </section>
 
