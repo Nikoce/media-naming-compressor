@@ -11,7 +11,7 @@ YYMMDD_P-{产品}_H-{主题}[H重复时-01/-02...]_VL-{S/M/L}-{时长}_S-{尺寸
 时长按自动读取并四舍五入的秒数分档：0–10s 使用 `VL-S-xx`，11–20s 使用 `VL-M-xx`，21–30s 使用 `VL-L-xx`，其中 `xx` 为秒数（例如 `VL-M-15`）。超过 30s 的素材也归为 L。
 
 同一批素材只有 H 字段相同时才追加两位序号。删除素材后，剩余同主题素材会按当前顺序重新编号。
-主题只保留文字和数字，自动删除空格、标点和符号，例如 `Brain Training` → `BrainTraining`。重复主题输出为 `H-BrainTraining-01`，横线仅用于 H 前缀和自动序号；不重复时为 `H-BrainTraining`。
+主题只保留文字和数字，每个单词首字母自动大写，并删除空格、标点和符号，例如 `brain training` → `BrainTraining`。重复主题输出为 `H-BrainTraining-01`，横线仅用于 H 前缀和自动序号；不重复时为 `H-BrainTraining`。
 
 ## 功能
 

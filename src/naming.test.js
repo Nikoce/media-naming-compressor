@@ -5,10 +5,13 @@ import { durationPart, normalizeTheme } from './naming.js';
 test('theme joins words and removes whitespace, punctuation and symbols', () => {
   for (const [value, expected] of [
     ['Brain Training', 'BrainTraining'],
+    ['brain training', 'BrainTraining'],
+    ['brain-training game', 'BrainTrainingGame'],
+    ['brainTraining', 'BrainTraining'],
     [' Brain-Training_!@#$%^&*()[]{}.,/\\:;\"\'<>?=+|~` ', 'BrainTraining'],
     ['Brain\tTraining\n\u00a0Game', 'BrainTrainingGame'],
     ['脑力，训练！ 2', '脑力训练2'],
-    ['Café déjà-vu', 'Cafédéjàvu'],
+    ['Café déjà-vu', 'CaféDéjàVu'],
     ['Cafe\u0301 Training 🎮', 'Cafe\u0301Training'],
     ['—–－，。！？', ''], [null, ''], [undefined, ''],
   ]) assert.equal(normalizeTheme(value), expected);

@@ -1,5 +1,8 @@
 export function normalizeTheme(value) {
-  return String(value ?? '').replace(/[^\p{L}\p{N}\p{M}]/gu, '');
+  return String(value ?? '')
+    .split(/[^\p{L}\p{N}\p{M}]+/u)
+    .map((word) => word.replace(/^\p{L}/u, (letter) => letter.toUpperCase()))
+    .join('');
 }
 
 export function durationPart(duration) {

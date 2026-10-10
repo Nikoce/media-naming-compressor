@@ -1101,14 +1101,24 @@ previewPanel.addEventListener('drop', (event) => {
   addFiles(event.dataTransfer.files);
 });
 
+let themeWordStart = null;
 for (const [key, input] of Object.entries(fields)) {
   if (['date', 'duration', 'ratio'].includes(key)) continue;
   input.addEventListener('input', (event) => {
     if (key === 'theme') {
       if (event.isComposing) return;
-      const original = input.value;
+      let original = input.value;
+      const caret = input.selectionStart;
+      // Remember a removed word separator so the next typed word starts uppercase.
+      if (themeWordStart !== null && event.inputType === 'insertText' && event.data
+        && caret - event.data.length === themeWordStart) {
+        original = original.slice(0, themeWordStart)
+          + original.slice(themeWordStart).replace(/^\p{L}/u, (letter) => letter.toUpperCase());
+      }
+      themeWordStart = /[^\p{L}\p{N}\p{M}]$/u.test(original.slice(0, caret))
+        ? normalizeTheme(original.slice(0, caret)).length : null;
       const cleaned = normalizeTheme(original);
-      if (cleaned !== original) {
+      if (cleaned !== input.value) {
         const start = normalizeTheme(original.slice(0, input.selectionStart)).length;
         const end = normalizeTheme(original.slice(0, input.selectionEnd)).length;
         input.value = cleaned;
@@ -1123,6 +1133,7 @@ for (const [key, input] of Object.entries(fields)) {
 fields.theme.addEventListener('compositionend', () => {
   fields.theme.dispatchEvent(new Event('input', { bubbles: true }));
 });
+fields.theme.addEventListener('blur', () => { themeWordStart = null; });
 
 onlyIssues.addEventListener('change', () => {
   state.onlyIssues = onlyIssues.checked;
