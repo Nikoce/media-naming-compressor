@@ -1,3 +1,7 @@
+export function normalizeTheme(value) {
+  return String(value ?? '').replace(/[^\p{L}\p{N}\p{M}]/gu, '');
+}
+
 export function durationPart(duration) {
   if (duration === '' || duration == null) return 'VL-S-时长';
   const seconds = Number(duration);

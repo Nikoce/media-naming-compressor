@@ -5,7 +5,7 @@ import JSZip from 'jszip';
 import { setupSubtitles } from './subtitles.js';
 import { burnSubtitleJob } from './caption-export.js';
 import { runMediaJob } from './media-jobs.js';
-import { durationPart } from './naming.js';
+import { durationPart, normalizeTheme } from './naming.js';
 import {
   ALL_FORMATS,
   BlobSource,
@@ -187,7 +187,7 @@ function valuesFor(item) {
   return {
     date: safePart(fields.date.value || todayYYMMDD()),
     product: safePart(fields.product.value),
-    theme: safePart(fields.theme.value),
+    theme: normalizeTheme(fields.theme.value),
     duration: safePart(detected.duration),
     ratio: safePart(detected.ratio),
     language: languageFor(item),
@@ -413,7 +413,8 @@ function mergeHistory(primary = {}, secondary = {}) {
   const merged = defaultHistory();
   for (const key of Object.keys(merged)) {
     const values = [...(primary[key] || []), ...(secondary[key] || []), ...(merged[key] || [])];
-    merged[key] = [...new Set(values.map((value) => safePart(value)).filter(Boolean))].slice(0, 30);
+    const normalize = key === 'theme' ? normalizeTheme : safePart;
+    merged[key] = [...new Set(values.map(normalize).filter(Boolean))].slice(0, 30);
   }
   return merged;
 }
@@ -435,7 +436,7 @@ function writeLocalHistory(history) {
 function rememberLocalHistory(values) {
   const next = mergeHistory(state.history, {});
   for (const key of ['product', 'theme', 'maker', 'productionTime', 'language']) {
-    const value = safePart(values[key]);
+    const value = key === 'theme' ? normalizeTheme(values[key]) : safePart(values[key]);
     if (!value) continue;
     const normalizedValue = value.toLowerCase();
     next[key] = [value, ...(next[key] || []).filter((item) => {
@@ -520,9 +521,7 @@ async function translateTheme() {
       });
       state.themeTranslators.set(cacheKey, translator);
     }
-    const translated = String(await translator.translate(text))
-      .trim()
-      .replace(/[.!?。！？]+$/g, '');
+    const translated = normalizeTheme(await translator.translate(text));
     if (!translated) throw new Error('翻译结果为空');
     fields.theme.value = translated;
     fields.theme.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1104,12 +1103,26 @@ previewPanel.addEventListener('drop', (event) => {
 
 for (const [key, input] of Object.entries(fields)) {
   if (['date', 'duration', 'ratio'].includes(key)) continue;
-  input.addEventListener('input', () => {
+  input.addEventListener('input', (event) => {
+    if (key === 'theme') {
+      if (event.isComposing) return;
+      const original = input.value;
+      const cleaned = normalizeTheme(original);
+      if (cleaned !== original) {
+        const start = normalizeTheme(original.slice(0, input.selectionStart)).length;
+        const end = normalizeTheme(original.slice(0, input.selectionEnd)).length;
+        input.value = cleaned;
+        input.setSelectionRange(start, end);
+      }
+    }
     invalidateOutputs();
     if (key === 'theme') updateThemeTranslateButton();
     renderVideoList();
   });
 }
+fields.theme.addEventListener('compositionend', () => {
+  fields.theme.dispatchEvent(new Event('input', { bubbles: true }));
+});
 
 onlyIssues.addEventListener('change', () => {
   state.onlyIssues = onlyIssues.checked;

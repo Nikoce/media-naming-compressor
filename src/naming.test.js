@@ -1,6 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { durationPart } from './naming.js';
+import { durationPart, normalizeTheme } from './naming.js';
+
+test('theme joins words and removes whitespace, punctuation and symbols', () => {
+  for (const [value, expected] of [
+    ['Brain Training', 'BrainTraining'],
+    [' Brain-Training_!@#$%^&*()[]{}.,/\\:;\"\'<>?=+|~` ', 'BrainTraining'],
+    ['Brain\tTraining\n\u00a0Game', 'BrainTrainingGame'],
+    ['脑力，训练！ 2', '脑力训练2'],
+    ['Café déjà-vu', 'Cafédéjàvu'],
+    ['Cafe\u0301 Training 🎮', 'Cafe\u0301Training'],
+    ['—–－，。！？', ''], [null, ''], [undefined, ''],
+  ]) assert.equal(normalizeTheme(value), expected);
+});
+
+test('H field reserves hyphens for its prefix and automatic sequence', () => {
+  const theme = normalizeTheme('Brain - Training!');
+  const field = `H-${theme}-01`;
+  assert.equal(field, 'H-BrainTraining-01');
+  assert.equal((field.match(/-/g) || []).length, 2);
+  assert.equal(normalizeTheme(theme), theme);
+});
 
 test('duration naming uses S, M and L at the range boundaries', () => {
   for (const [seconds, expected] of [
