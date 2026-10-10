@@ -224,7 +224,8 @@ h1 {
 .subtitle-transfer-report strong { display: block; margin-bottom: 5px; color: var(--danger); }
 .subtitle-transfer-report ul { margin: 0 0 6px; padding-left: 18px; }
 .subtitle-transfer-report a { color: var(--accent); font-weight: 700; }
-.process-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.process-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+#exportOnlyBtn { min-width: 100px; }
 .primary-button { min-width: 220px; padding: 12px 17px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 820; }
 .primary-button:hover { background: var(--accent-strong); }
 .primary-button:disabled { cursor: not-allowed; opacity: 0.55; }

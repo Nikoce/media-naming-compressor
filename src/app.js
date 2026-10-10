@@ -44,6 +44,7 @@ const videoList = $('videoList');
 const analysisStatus = $('analysisStatus');
 const processBtn = $('processBtn');
 const compressOnlyBtn = $('compressOnlyBtn');
+const exportOnlyBtn = $('exportOnlyBtn');
 const translateThemeBtn = $('translateThemeBtn');
 const results = $('results');
 const resultPanel = $('resultPanel');
@@ -283,7 +284,7 @@ function itemClass(item) {
 function statusChip(item) {
   if (item.error || item.processError || item.status === '输出失败') return { text: '异常', cls: 'error' };
   if (isProcessing(item) && item.status.startsWith('等待')) return { text: item.status, cls: '' };
-  if (isProcessing(item)) return { text: item.status.startsWith('正在命名') ? '正在命名' : (item.progress ? `${item.progress}%` : (item.engine === 'ffmpeg' ? '兼容压制' : '极速压制')), cls: '' };
+  if (isProcessing(item)) return { text: item.engine === 'original' ? '正在导出' : (item.status.startsWith('正在命名') ? '正在命名' : (item.progress ? `${item.progress}%` : (item.engine === 'ffmpeg' ? '兼容压制' : '极速压制'))), cls: '' };
   if (item.status === '输出完成') return { text: '已输出', cls: 'ok' };
   if (!item.detected) return { text: '分析中', cls: '' };
   const naming = namingState(item);
@@ -781,7 +782,7 @@ function validateBeforeProcess(requireNaming) {
 
 function syncBusyControls() {
   const busy = state.processing || state.translating;
-  const controls = [fileInput, clearBtn, addMoreBtn, processBtn, compressOnlyBtn, translateThemeBtn, ...Object.values(fields)];
+  const controls = [fileInput, clearBtn, addMoreBtn, processBtn, compressOnlyBtn, exportOnlyBtn, translateThemeBtn, ...Object.values(fields)];
   for (const control of controls) control.disabled = busy;
   document.querySelectorAll('.preset-card input, .remove-button').forEach((control) => { control.disabled = busy; });
 }
@@ -883,7 +884,7 @@ async function transcodeWithFFmpeg(ffmpeg, item, preset, outputName) {
   }
 }
 
-async function processAll(renameOutput) {
+async function processAll(renameOutput, exportOnly = false) {
   if (state.processing || state.translating) return;
   fields.date.value = todayYYMMDD();
   renderVideoList();
@@ -892,19 +893,23 @@ async function processAll(renameOutput) {
     window.alert(invalid);
     return;
   }
+  if (exportOnly && state.files.some((item) => item.captionJob)) {
+    window.alert('素材中有尚未合成的字幕。请先在字幕页导出带字幕的视频，再添加到命名页使用“仅导出”，或使用“批量命名并压制”完成字幕合成。');
+    return;
+  }
 
   releaseOutputs();
   const preset = document.querySelector('input[name="preset"]:checked')?.value || 'standard';
-  const activeButton = renameOutput ? processBtn : compressOnlyBtn;
-  const idleLabel = renameOutput && state.files.every((item) => item.readyMp4)
-    ? '批量命名并导出' : (renameOutput ? '批量命名并压制' : '仅压制（保留原名）');
+  const activeButton = exportOnly ? exportOnlyBtn : (renameOutput ? processBtn : compressOnlyBtn);
+  const idleLabel = exportOnly ? '仅导出' : (renameOutput && state.files.every((item) => item.readyMp4)
+    ? '批量命名并导出' : (renameOutput ? '批量命名并压制' : '仅压制（保留原名）'));
   const compressionNames = renameOutput ? null : compressionOnlyNames();
   state.activeProcessButton = activeButton;
   setProcessingControls(true);
-  activeButton.textContent = '正在检测极速引擎…';
+  activeButton.textContent = exportOnly ? '正在导出…' : '正在检测极速引擎…';
   resultPanel.hidden = false;
 
-  const fastEngineAvailable = state.files.some((item) => !item.captionJob && (!renameOutput || !item.readyMp4)) ? await ensureFastEngine() : false;
+  const fastEngineAvailable = !exportOnly && state.files.some((item) => !item.captionJob && (!renameOutput || !item.readyMp4)) ? await ensureFastEngine() : false;
   let ffmpeg = null;
   let usedFastEngine = false;
   let usedFallbackEngine = false;
@@ -916,16 +921,19 @@ async function processAll(renameOutput) {
     state.lastProgressPercent = -1;
     item.progress = 0;
     item.processError = null;
-    item.engine = renameOutput && item.readyMp4 ? 'subtitle' : (fastEngineAvailable ? 'webcodecs' : 'ffmpeg');
-    item.status = renameOutput && item.readyMp4 ? '正在命名…' : '正在压制 0%';
+    item.engine = exportOnly ? 'original' : (renameOutput && item.readyMp4 ? 'subtitle' : (fastEngineAvailable ? 'webcodecs' : 'ffmpeg'));
+    item.status = exportOnly ? '正在导出…' : (renameOutput && item.readyMp4 ? '正在命名…' : '正在压制 0%');
     activeButton.textContent = `正在处理 ${i + 1} / ${state.files.length}`;
     renderVideoList();
     const historyValues = renameOutput ? valuesFor(item) : null;
-    const outputName = renameOutput ? nameFor(item) : compressionNames.get(item.id);
+    const sourceExtension = item.file.name.match(/\.[^.]+$/)?.[0] || '';
+    const outputName = exportOnly ? nameFor(item).replace(/\.mp4$/, sourceExtension) : (renameOutput ? nameFor(item) : compressionNames.get(item.id));
     try {
       let output = null;
       let fastEngineError = null;
-      if (item.captionJob) {
+      if (exportOnly) {
+        output = { outputName, blob: item.file, url: URL.createObjectURL(item.file), engine: 'original' };
+      } else if (item.captionJob) {
         const rendered = await burnSubtitleJob(item.captionJob, ensureFFmpeg, profileFor(preset), (stage, progress) => {
           item.status = stage;
           if (stage.startsWith('FFmpeg') || stage.includes('切换 FFmpeg')) item.engine = 'ffmpeg';
@@ -1005,7 +1013,7 @@ async function processAll(renameOutput) {
 function updateBatchDownloadState() {
   const count = state.completedOutputs.length;
   batchDownloadBtn.disabled = count === 0;
-  batchDownloadMeta.textContent = count ? `已完成 ${count} 个文件，可打包为 ZIP 下载` : '压制完成后可一次下载全部成功文件';
+  batchDownloadMeta.textContent = count ? `已完成 ${count} 个文件，可打包为 ZIP 下载` : '输出完成后可一次下载全部成功文件';
 }
 
 function triggerDownload(url, name) {
@@ -1049,7 +1057,7 @@ async function downloadBatchZip() {
 function appendResult(output, error = '') {
   const el = document.createElement('div');
   el.className = `result-item${error ? ' error' : ''}`;
-  const engineLabel = output.engine === 'subtitle' ? '自动字幕' : (output.engine === 'webcodecs' ? 'WebCodecs 极速' : 'FFmpeg 兼容');
+  const engineLabel = output.engine === 'original' ? '原视频 · 未压制' : (output.engine === 'subtitle' ? '自动字幕' : (output.engine === 'webcodecs' ? 'WebCodecs 极速' : 'FFmpeg 兼容'));
   el.innerHTML = error
     ? `<div class="result-name">${escapeHtml(`${output.outputName} · ${error}`)}</div>`
     : `<div class="result-main"><div class="result-name">${escapeHtml(output.outputName)}</div><div class="result-meta ${output.engine === 'webcodecs' ? 'fast' : 'fallback'}">${engineLabel}</div></div><button class="download-button" type="button">下载</button>`;
@@ -1117,6 +1125,7 @@ document.querySelectorAll('.preset-card input').forEach((input) => {
 translateThemeBtn.addEventListener('click', translateTheme);
 processBtn.addEventListener('click', () => processAll(true));
 compressOnlyBtn.addEventListener('click', () => processAll(false));
+exportOnlyBtn.addEventListener('click', () => processAll(true, true));
 batchDownloadBtn.addEventListener('click', downloadBatchZip);
 const subtitleOutputs = [];
 function subtitleOutputNames(outputs) {

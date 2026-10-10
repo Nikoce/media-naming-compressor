@@ -143,6 +143,7 @@
             <div class="notice" id="notice">默认使用 WebCodecs 极速压制，不兼容的素材会自动切换 FFmpeg。</div>
             <div class="process-actions">
               <button class="secondary-button" id="compressOnlyBtn" type="button">仅压制（保留原名）</button>
+              <button class="secondary-button" id="exportOnlyBtn" type="button" title="按命名规则导出原视频，保留原格式，不做压制">仅导出</button>
               <button class="primary-button" id="processBtn" type="button">批量命名并压制</button>
             </div>
           </div>
@@ -157,7 +158,7 @@
             <h2>输出结果</h2>
           </div>
           <div class="batch-download-box">
-            <span id="batchDownloadMeta">压制完成后可一次下载全部成功文件</span>
+            <span id="batchDownloadMeta">输出完成后可一次下载全部成功文件</span>
             <button class="primary-button batch-download-button" id="batchDownloadBtn" type="button" disabled>打包下载全部（ZIP）</button>
           </div>
         </div>
