@@ -5,7 +5,8 @@ import JSZip from 'jszip';
 import { setupSubtitles } from './subtitles.js';
 import { burnSubtitleJob } from './caption-export.js';
 import { runMediaJob } from './media-jobs.js';
-import { durationPart, normalizeTheme } from './naming.js';
+import { durationPart, normalizeTheme, parseMediaName, resolveNamingValues } from './naming.js';
+import { setupHistoryDropdown } from './history-dropdown.js';
 import {
   ALL_FORMATS,
   BlobSource,
@@ -86,6 +87,9 @@ const fields = {
   maker: $('maker'),
   productionTime: $('productionTime'),
 };
+const namingOverrides = new Set();
+const automaticNamingDefaults = new Map();
+const historyDropdowns = new Map();
 
 function todayYYMMDD() {
   const d = new Date();
@@ -177,22 +181,20 @@ function detectLanguage(fileName, taggedLanguage = '') {
   return aliases[key] || key.slice(0, 2);
 }
 
-function languageFor(item) {
-  const override = safePart(fields.language.value);
-  return override || safePart(item?.detected?.language);
-}
-
 function valuesFor(item) {
   const detected = item?.detected || {};
+  const values = resolveNamingValues(item?.namedValues, Object.fromEntries(
+    Object.entries(fields).map(([key, input]) => [key, key === 'date' ? todayYYMMDD() : input.value]),
+  ), namingOverrides);
   return {
-    date: safePart(fields.date.value || todayYYMMDD()),
-    product: safePart(fields.product.value),
-    theme: normalizeTheme(fields.theme.value),
+    date: safePart(values.date || todayYYMMDD()),
+    product: safePart(values.product),
+    theme: normalizeTheme(values.theme),
     duration: safePart(detected.duration),
     ratio: safePart(detected.ratio),
-    language: languageFor(item),
-    maker: safePart(fields.maker.value),
-    productionTime: safePart(fields.productionTime.value),
+    language: safePart(values.language) || safePart(detected.language),
+    maker: safePart(values.maker),
+    productionTime: safePart(values.productionTime),
   };
 }
 
@@ -328,7 +330,8 @@ function renderVideoList() {
     const meta = [
       '视频', detected.resolution || '读取中', detected.duration ? `${detected.duration}s` : '',
       formatFileSize(item.file.size), detected.ratio ? ratioLabel(detected.ratio) : '',
-      languageFor(item) || '语言未识别',
+      valuesFor(item).language || '语言未识别',
+      item.namedValues ? '已识别原命名' : '',
       item.captionJob ? `${item.captionJob.cues.length} 条字幕 · 导出时合成` : (item.readyMp4 ? '字幕已烧录' : ''),
     ].filter(Boolean).join(' · ');
     const nameClass = item.error || item.processError ? 'error' : (naming.ok ? '' : 'missing');
@@ -387,6 +390,7 @@ function removeFile(index) {
   if (state.processing || state.translating) return;
   invalidateOutputs();
   state.files.splice(index, 1);
+  syncRecognizedNaming();
   renderVideoList();
   if (!state.files.length) {
     workspace.hidden = true;
@@ -399,6 +403,7 @@ function clearFiles() {
   if (state.processing || state.translating) return;
   releaseOutputs();
   state.files = [];
+  syncRecognizedNaming();
   renderVideoList();
   workspace.hidden = true;
   dropZone.hidden = false;
@@ -412,7 +417,9 @@ function defaultHistory() {
 function mergeHistory(primary = {}, secondary = {}) {
   const merged = defaultHistory();
   for (const key of Object.keys(merged)) {
-    const values = [...(primary[key] || []), ...(secondary[key] || []), ...(merged[key] || [])];
+    const saved = Array.isArray(primary?.[key]) ? primary[key] : null;
+    const fallback = Array.isArray(secondary?.[key]) ? secondary[key] : null;
+    const values = [...(saved || fallback || merged[key]), ...(saved && fallback ? fallback : [])];
     const normalize = key === 'theme' ? normalizeTheme : safePart;
     merged[key] = [...new Set(values.map(normalize).filter(Boolean))].slice(0, 30);
   }
@@ -452,24 +459,22 @@ function rememberLocalHistory(values) {
 }
 
 function hydrateHistory() {
-  const map = {
-    product: 'productHistory', theme: 'themeHistory', maker: 'makerHistory',
-    productionTime: 'productionTimeHistory', language: 'languageHistory',
-  };
-  for (const [key, listId] of Object.entries(map)) {
-    const list = $(listId);
-    list.innerHTML = '';
-    for (const value of state.history[key] || []) {
-      const option = document.createElement('option');
-      option.value = value;
-      list.appendChild(option);
-    }
-  }
+  for (const dropdown of historyDropdowns.values()) dropdown.refresh();
 }
 
 function loadHistory() {
   state.history = mergeHistory(readLocalHistory(), {});
   writeLocalHistory(state.history);
+  for (const key of Object.keys(defaultHistory())) {
+    historyDropdowns.set(key, setupHistoryDropdown(fields[key], {
+      getValues: () => state.history[key] || [],
+      onDelete(value) {
+        state.history[key] = state.history[key].filter((item) => item !== value);
+        writeLocalHistory(state.history);
+        hydrateHistory();
+      },
+    }));
+  }
   hydrateHistory();
   if (!fields.maker.value && state.history.maker?.length) fields.maker.value = state.history.maker[0];
 }
@@ -694,9 +699,34 @@ async function probeWithFFmpegUnlocked(file) {
   }
 }
 
+function syncRecognizedNaming() {
+  const recognized = state.files.filter((item) => item.namedValues);
+  const note = $('namingRecognitionNote');
+  note.hidden = !recognized.length;
+  note.textContent = `已识别 ${recognized.length} 个素材的原命名。不同字段按各素材保留；编辑上方字段可统一覆盖，时长和尺寸以实际视频为准。`;
+  const keys = ['date', 'product', 'theme', 'language', 'maker', 'productionTime'];
+  for (const key of keys) {
+    if (namingOverrides.has(key)) continue;
+    if (automaticNamingDefaults.has(key)) {
+      fields[key].value = automaticNamingDefaults.get(key);
+      automaticNamingDefaults.delete(key);
+    }
+    if (recognized.length && key !== 'date') automaticNamingDefaults.set(key, fields[key].value);
+    const common = recognized[0]?.namedValues[key];
+    if (common && recognized.length === state.files.length
+      && recognized.every((item) => item.namedValues[key] === common)) {
+      fields[key].value = common;
+    } else if (recognized.length) {
+      fields[key].value = key === 'date' ? '按素材自动' : '';
+    } else if (key === 'date') {
+      fields.date.value = todayYYMMDD();
+    }
+  }
+  updateThemeTranslateButton();
+}
+
 async function addFiles(fileList, prepared = new Map()) {
   if (state.processing || state.translating) return;
-  fields.date.value = todayYYMMDD();
   const incoming = [...fileList].filter((file) => file.type.startsWith('video/') || /\.(mp4|mov|m4v|avi|mkv|webm|mpeg|mpg)$/i.test(file.name));
   if (!incoming.length) return;
   invalidateOutputs();
@@ -708,7 +738,7 @@ async function addFiles(fileList, prepared = new Map()) {
       && Number.isFinite(metadata?.width) && metadata.width > 0
       && Number.isFinite(metadata?.height) && metadata.height > 0;
     state.files.push({
-      id: crypto.randomUUID(), file, status: hasMetadata ? '分析完成' : '等待分析',
+      id: crypto.randomUUID(), file, namedValues: parseMediaName(file.name), status: hasMetadata ? '分析完成' : '等待分析',
       detected: hasMetadata ? {
         date: todayYYMMDD(), duration: Math.max(1, Math.round(metadata.duration)),
         width: metadata.width, height: metadata.height,
@@ -724,6 +754,7 @@ async function addFiles(fileList, prepared = new Map()) {
   dropZone.hidden = true;
   workspace.hidden = false;
   fileInput.value = '';
+  syncRecognizedNaming();
   renderVideoList();
   for (let i = startIndex; i < state.files.length; i += 1) {
     if (!state.files[i].detected) await analyzeOne(i);
@@ -783,6 +814,7 @@ function syncBusyControls() {
   const busy = state.processing || state.translating;
   const controls = [fileInput, clearBtn, addMoreBtn, processBtn, compressOnlyBtn, exportOnlyBtn, translateThemeBtn, ...Object.values(fields)];
   for (const control of controls) control.disabled = busy;
+  for (const dropdown of historyDropdowns.values()) dropdown.setDisabled(busy);
   document.querySelectorAll('.preset-card input, .remove-button').forEach((control) => { control.disabled = busy; });
 }
 
@@ -885,7 +917,7 @@ async function transcodeWithFFmpeg(ffmpeg, item, preset, outputName) {
 
 async function processAll(renameOutput, exportOnly = false) {
   if (state.processing || state.translating) return;
-  fields.date.value = todayYYMMDD();
+  syncRecognizedNaming();
   renderVideoList();
   const invalid = validateBeforeProcess(renameOutput);
   if (invalid) {
@@ -1025,7 +1057,7 @@ function triggerDownload(url, name) {
 }
 
 function batchZipName() {
-  const date = safePart(fields.date.value || todayYYMMDD()) || todayYYMMDD();
+  const date = /^\d{6}$/.test(fields.date.value) ? fields.date.value : todayYYMMDD();
   const product = safePart(fields.product.value) || '产品';
   const maker = safePart(fields.maker.value) || '制作人';
   return `${date}-${product}-${maker}.zip`;
@@ -1125,6 +1157,8 @@ for (const [key, input] of Object.entries(fields)) {
         input.setSelectionRange(start, end);
       }
     }
+    namingOverrides.add(key);
+    automaticNamingDefaults.delete(key);
     invalidateOutputs();
     if (key === 'theme') updateThemeTranslateButton();
     renderVideoList();

@@ -51,18 +51,16 @@
             <span>日期 <em>自动</em></span>
             <input id="date" readonly autocomplete="off" />
           </label>
-          <label class="field">
-            <span>产品 P</span>
-            <input id="product" list="productHistory" placeholder="例如 A11" autocomplete="off" />
-            <datalist id="productHistory"></datalist>
-          </label>
+          <div class="field">
+            <label for="product">产品 P</label>
+            <input id="product" placeholder="例如 A11" autocomplete="off" />
+          </div>
           <div class="field theme-field">
             <div class="field-heading">
               <label for="theme">主题 H</label>
               <button class="translate-button" id="translateThemeBtn" type="button" title="使用浏览器本地模型进行中英互译" aria-label="主题中英互译">中 ⇄ EN</button>
             </div>
-            <input id="theme" list="themeHistory" placeholder="例如 BrainTraining" title="单词首字母自动大写，空格与标点自动删除" autocomplete="off" />
-            <datalist id="themeHistory"></datalist>
+            <input id="theme" placeholder="例如 BrainTraining" title="单词首字母自动大写，空格与标点自动删除" autocomplete="off" />
           </div>
           <label class="field auto-field">
             <span>时长 VL-S/M/L <em>自动</em></span>
@@ -72,22 +70,21 @@
             <span>尺寸 S <em>自动</em></span>
             <input id="ratio" value="按素材自动" readonly autocomplete="off" />
           </label>
-          <label class="field">
-            <span>语言 L <em>文件名 / 可覆盖</em></span>
-            <input id="language" list="languageHistory" placeholder="例如 en" autocomplete="off" />
-            <datalist id="languageHistory"></datalist>
-          </label>
-          <label class="field">
-            <span>制作人 D</span>
-            <input id="maker" list="makerHistory" placeholder="Niko" autocomplete="off" />
-            <datalist id="makerHistory"></datalist>
-          </label>
-          <label class="field">
-            <span>制作时长 M</span>
-            <input id="productionTime" list="productionTimeHistory" placeholder="例如 0.1" autocomplete="off" />
-            <datalist id="productionTimeHistory"></datalist>
-          </label>
+          <div class="field">
+            <label for="language">语言 L <em>文件名 / 可覆盖</em></label>
+            <input id="language" placeholder="例如 en" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="maker">制作人 D</label>
+            <input id="maker" placeholder="Niko" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="productionTime">制作时长 M</label>
+            <input id="productionTime" placeholder="例如 0.1" autocomplete="off" />
+          </div>
         </div>
+
+        <p class="naming-recognition-note" id="namingRecognitionNote" hidden></p>
 
         <div class="naming-note">
           <span>批量规则</span>
