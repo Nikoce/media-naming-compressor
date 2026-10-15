@@ -16,7 +16,15 @@ test('PCM decoding preserves samples, duration and a sliced FFmpeg buffer', () =
 test('each video gets independent transcription settings and overlap context', () => {
   const first = transcriptionOptions();
   first.language = 'english';
-  assert.equal(transcriptionOptions().language, undefined);
+  assert.equal(transcriptionOptions().language, 'en');
   assert.equal(transcriptionOptions().task, 'transcribe');
   assert.ok(transcriptionOptions().stride_length_s >= 5);
+});
+
+test('English-only and multilingual decoders receive compatible language settings', () => {
+  const english = transcriptionOptions({ englishOnly: true, language: 'en' });
+  assert.equal('task' in english, false);
+  assert.equal('language' in english, false);
+  assert.equal(transcriptionOptions({ language: 'zh' }).language, 'zh');
+  assert.equal(transcriptionOptions({ language: 'fr' }).task, 'transcribe');
 });

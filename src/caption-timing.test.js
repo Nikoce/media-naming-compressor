@@ -28,9 +28,9 @@ test('continuous speech is split into short, nonoverlapping cues', () => {
   for (let i = 1; i < cues.length; i += 1) assert.ok(cues[i - 1].end <= cues[i].start);
 });
 
-test('a long final word timestamp does not hold the caption through silence', () => {
+test('grouping does not invent a short word end without audio evidence', () => {
   const [cue] = cuesFromWords([{ text: ' hello', timestamp: [1, 8] }]);
-  assert.ok(cue.end < 3);
+  assert.equal(cue.end, 8);
 });
 
 test('Chinese words remain together without inserted spaces and split at punctuation', () => {
@@ -44,13 +44,13 @@ test('Chinese words remain together without inserted spaces and split at punctua
   assert.ok(cues[0].end <= cues[1].start);
 });
 
-test('an inflated word end does not fill the pause before the next phrase', () => {
+test('grouping clips overlaps but leaves silence correction to audio alignment', () => {
   const cues = cuesFromWords([
     { text: ' Hello', timestamp: [1, 8] },
     { text: ' again', timestamp: [5, 5.4] },
   ]);
   assert.equal(cues.length, 2);
-  assert.ok(cues[0].end < 3);
+  assert.equal(cues[0].end, 5);
   assert.equal(cues[1].start, 5);
 });
 
@@ -187,4 +187,37 @@ test('recognition output is bounded by its own audio duration for every batch it
   assert.deepEqual(cuesFromWords(chunks, { duration: 2.2 }), [{ start: 2, end: 2.2, text: 'Last.' }]);
   assert.equal(cuesFromWords(chunks, { duration: 7 }).at(-1).text, 'Phantom.');
   assert.equal(chunks[0].timestamp[1], null);
+});
+
+test('grouped numbers, decimals, currencies and percentages are indivisible across cues', () => {
+  const chunks = [
+    ['A long spoken introduction', 0, 1.8], ['costs', 1.8, 2], ['$', 2, 2.02],
+    ['12', 2.02, 2.1], [',345', 2.1, 2.2], ['.67', 2.2, 2.4],
+    ['and', 2.4, 2.5], ['8', 2.5, 2.7], ['.5', 2.7, 2.8], ['%', 2.8, 2.82],
+    ['in', 2.82, 2.9], ['2030', 2.9, 3.2], ['.', 3.2, 3.22],
+  ].map(([text, start, end]) => ({ text, timestamp: [start, end] }));
+  const cues = cuesFromWords(chunks);
+  assert.ok(cues.some(cue => cue.text.includes('$12,345.67')));
+  assert.ok(cues.some(cue => cue.text.includes('8.5%')));
+  assert.ok(cues.every(cue => !/^[,.;%]/u.test(cue.text)));
+  assert.ok(cues.every((cue, i) => !i || cue.start >= cues[i - 1].end));
+});
+
+test('contractions and separate punctuation remain with their word at a width boundary', () => {
+  const cues = cuesFromWords([
+    ['A fairly long spoken phrase', 0, 1.5], ['we', 1.5, 1.7], ["'re", 1.7, 1.8],
+    ['ready', 1.8, 2.1], ['!', 2.1, 2.12],
+  ].map(([text, start, end]) => ({ text, timestamp: [start, end] })));
+  assert.ok(cues.some(cue => cue.text.includes("we're")));
+  assert.ok(cues.every(cue => !/^[!']/u.test(cue.text)));
+});
+
+test('a collapsed final word in the same voiced region stays readable without bridging detected pauses', () => {
+  const chunks = [
+    { text: 'Look', timestamp: [1, 1.3], continuousSpeech: .9 },
+    { text: 'closely.', timestamp: [1.9, 1.94], continuousSpeech: .9 },
+  ];
+  assert.deepEqual(cuesFromWords(chunks), [{ start: 1, end: 1.94, text: 'Look closely.' }]);
+  const paused = [{ ...chunks[0] }, { ...chunks[1], continuousSpeech: 1.8 }];
+  assert.equal(cuesFromWords(paused).length, 2);
 });

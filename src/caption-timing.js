@@ -1,3 +1,5 @@
+import { appendCaptionText as appendWord, continuesCaptionUnit } from './caption-text.js';
+
 const MAX_CAPTION_SECONDS = 2.3;
 const MAX_CAPTION_WIDTH = 36;
 const MAX_SPEECH_GAP = 0.5;
@@ -16,15 +18,6 @@ function textWidth(text) {
 
 function cleanText(text) {
   return String(text || '').replace(/\s+/gu, ' ').trim();
-}
-
-function appendWord(text, word) {
-  const next = cleanText(word);
-  if (!text) return next;
-  return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]$/u.test(text)
-    || /[-’']$/u.test(text)
-    || /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}，。！？、；：,.!?;:—–-]/u.test(next)
-    ? text + next : `${text} ${next}`;
 }
 
 function cueFromWords(words) {
@@ -110,33 +103,35 @@ function alignChunks(chunks, duration) {
     // Preserve transcript order even when overlap decoding returns tied/backward
     // starts. Sorting first can reorder words, and hard-cutting ties loses text.
     const start = Math.max(0, rawStart, previous?.start ?? 0);
-    const end = Math.min(limit, Math.max(start + 0.05, hasEnd ? rawEnd : start + 0.6));
+    const end = Math.min(limit, hasEnd && rawEnd > start ? rawEnd : start + (hasEnd ? .02 : .6));
     const wordText = appendWord(prefix, text);
     prefix = '';
     if (previous && start === previous.start) {
       previous.text = appendWord(previous.text, wordText);
       previous.end = Math.max(previous.end, end);
-    } else words.push({ text: wordText, start, end });
+    } else words.push({ text: wordText, start, end, continuousSpeech: chunk.continuousSpeech });
   }
-  return words.flatMap(splitLongWord);
+  const units = [];
+  for (const [index, word] of words.entries()) {
+    const previous = units.at(-1);
+    if (previous && word.start - previous.end <= MAX_SPEECH_GAP
+      && continuesCaptionUnit(previous.text, word.text, words[index + 1]?.text)) {
+      previous.text = appendWord(previous.text, word.text);
+      previous.end = Math.max(previous.end, word.end);
+    } else units.push({ ...word });
+  }
+  return units.flatMap(splitLongWord);
 }
 
 export function cuesFromWords(chunks, { duration } = {}) {
   const alignedWords = alignChunks(chunks, duration);
 
-  const durations = alignedWords.map((word) => word.end - word.start)
-    .filter((duration) => duration >= 0.05 && duration <= 1.2).sort((a, b) => a - b);
-  const median = durations.length ? durations[Math.floor(durations.length / 2)] : 0.4;
-  const anomalousDuration = Math.max(1.4, Math.min(2, median * 3));
   const words = alignedWords.map((word, index) => {
     const nextStart = alignedWords[index + 1]?.start;
     let end = word.end;
-    // Only trim a clearly inflated final-word timestamp; normal word ends stay aligned.
-    if (end - word.start > anomalousDuration
-      && (nextStart === undefined || nextStart - word.start > anomalousDuration + MAX_SPEECH_GAP)) {
-      end = word.start + anomalousDuration;
-    }
-    if (nextStart !== undefined) end = Math.min(end, Math.max(word.start + 0.05, nextStart));
+    // Silence is checked against audio before grouping. A duration cap alone
+    // cannot tell which end is wrong and can erase the actual spoken interval.
+    if (nextStart !== undefined) end = Math.min(end, Math.max(word.start + .001, nextStart));
     return { ...word, end };
   });
 
@@ -145,7 +140,11 @@ export function cuesFromWords(chunks, { duration } = {}) {
   for (const word of words) {
     const group = groupWords.length ? cueFromWords(groupWords) : null;
     const nextText = group ? appendWord(group.text, word.text) : cleanText(word.text);
-    if (group && word.start - group.end > MAX_SPEECH_GAP) {
+    // Avoid an unreadable 20 ms cue at the end of an otherwise continuous
+    // utterance. This changes grouping only, never the word's audio timestamp.
+    const collapsedInVoice = group && word.end - word.start <= .16 && word.start - group.end <= .85
+      && word.continuousSpeech != null && word.continuousSpeech === groupWords.at(-1).continuousSpeech;
+    if (group && word.start - group.end > MAX_SPEECH_GAP && !collapsedInVoice) {
       groups.push(group);
       groupWords = [];
     } else if (group && (word.end - group.start > MAX_CAPTION_SECONDS

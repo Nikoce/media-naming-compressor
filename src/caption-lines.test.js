@@ -27,3 +27,8 @@ test('long manually edited captions are not discarded', () => {
   const text = 'One two three four five six seven eight nine ten eleven twelve thirteen fourteen.';
   assert.equal(wrapCaptionLines(text, 18, measure).join(' '), text);
 });
+test('visual wrapping keeps grouped numeric expressions intact', () => {
+  const lines = wrapCaptionLines('Over 12,345.67 people paid $89.50 at 8.5% interest', 22, text => text.length);
+  for (const expression of ['12,345.67', '$89.50', '8.5%']) assert.ok(lines.some(line => line.includes(expression)));
+  assert.equal(lines.join(' '), 'Over 12,345.67 people paid $89.50 at 8.5% interest');
+});

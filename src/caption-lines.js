@@ -1,6 +1,6 @@
 // Keep words and punctuation together, then choose the most readable break.
 export function wrapCaptionLines(text, maxWidth, measure) {
-  const chunks = String(text || '').trim().match(/[A-Za-z0-9]+(?:['’._-][A-Za-z0-9]+)*\s*|./gu) || [];
+  const chunks = String(text || '').trim().match(/[£€$¥₹]?\p{N}+(?:[,.\/:]\p{N}+)*(?:[%‰°])?\s*|[\p{Script=Latin}\p{N}]+(?:['’._-][\p{Script=Latin}\p{N}]+)*\s*|./gu) || [];
   if (!chunks.length) return [];
   const full = chunks.join('').trim();
   if (measure(full) <= maxWidth) return [full];

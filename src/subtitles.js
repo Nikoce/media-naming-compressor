@@ -7,6 +7,8 @@ import { matchesVideoSource, readVideoSource } from './video-source.js';
 import { transcriptionAudioArgs, decodeTranscriptionPcm } from './caption-audio.js';
 import { CAPTION_FONTS } from './caption-fonts.js';
 import { recognizeCaptions } from './caption-recognition.js';
+import { detectSpeechRegions } from './caption-speech.js';
+import { captionModelConfig, CAPTION_LANGUAGES } from './caption-models.js';
 
 const $ = (id) => document.getElementById(id);
 const fileInput = $('subtitleFile');
@@ -28,6 +30,7 @@ const status = $('subtitleStatus');
 const transcribeButton = $('transcribeBtn');
 const transcribeAllButton = $('transcribeAllBtn');
 const recognitionModel = $('subtitleRecognitionModel');
+const recognitionLanguage = $('subtitleRecognitionLanguage');
 const exportButton = $('subtitleExportBtn');
 const namedButton = $('subtitleNameExportBtn');
 const batchExportButton = $('subtitleBatchExportBtn');
@@ -101,7 +104,7 @@ function defaultCaptionOptions(style) {
 function setStatus(message) { status.textContent = message; }
 function setBusy(value) {
   busy = value;
-  for (const element of [fileInput, recognitionModel, exportButton, namedButton, cuesInput, addCueButton, deleteCueButton, $('subtitleZoomIn'), $('subtitleZoomOut'), styleResetButton, centerButton, bottomCenterButton, boldButton, ...alignButtons, ...Object.values(styleControls), ...document.querySelectorAll('.subtitle-style-card')]) element.disabled = value;
+  for (const element of [fileInput, recognitionModel, recognitionLanguage, exportButton, namedButton, cuesInput, addCueButton, deleteCueButton, $('subtitleZoomIn'), $('subtitleZoomOut'), styleResetButton, centerButton, bottomCenterButton, boldButton, ...alignButtons, ...Object.values(styleControls), ...document.querySelectorAll('.subtitle-style-card')]) element.disabled = value;
   exportButton.disabled = value || !selectedFile || !items[activeIndex]?.cuesText.trim();
   namedButton.disabled = exportButton.disabled;
   transcribeButton.disabled = value || !selectedFile;
@@ -145,6 +148,17 @@ async function getAudio(ffmpeg, file) {
 }
 
 export function setupSubtitles({ ensureFFmpeg, onExport, onSend, onBatchExport, onBatchSend }) {
+  recognitionLanguage.replaceChildren(...CAPTION_LANGUAGES.map(([code, label]) => {
+    const option = document.createElement('option');
+    option.value = code; option.textContent = label;
+    return option;
+  }));
+  const syncModelDescription = () => {
+    $('subtitleModelCapability').textContent = captionModelConfig(recognitionModel.value, recognitionLanguage.value).description;
+  };
+  syncModelDescription();
+  recognitionModel.addEventListener('change', syncModelDescription);
+  recognitionLanguage.addEventListener('change', syncModelDescription);
   styleControls.fontFamily.replaceChildren(...CAPTION_FONTS.map(({ id, label, family }) => {
     const option = document.createElement('option');
     option.value = id;
@@ -350,7 +364,8 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onSend, onBatchExport, 
     item.status = `正在识别 ${index + 1}/${items.length}`;
     item.error = '';
     renderBatchList();
-    const model = recognitionModel.value === 'tiny' ? 'Xenova/whisper-tiny' : 'Xenova/whisper-base';
+    const config = captionModelConfig(recognitionModel.value, recognitionLanguage.value);
+    const { model } = config;
     if (!transcriberLoading || loadedModel !== model) {
       setStatus('正在加载语音模型…');
       const previous = transcriberLoading;
@@ -366,9 +381,15 @@ export function setupSubtitles({ ensureFFmpeg, onExport, onSend, onBatchExport, 
     const audioLoading = runMediaJob(async () => getAudio(await ensureFFmpeg(), item.file), () => setStatus('等待视频处理任务…'));
     const [audio, transcriber] = await Promise.all([audioLoading, transcriberLoading]);
     setStatus(`正在识别 ${index + 1}/${items.length}：${item.file.name}`);
-    const { cues, refinedCount, reviewNeeded } = await runMediaJob(() => {
+    const { cues, refinedCount, reviewNeeded } = await runMediaJob(async () => {
+      setStatus(`正在核对语音边界 ${index + 1}/${items.length}…`);
+      let speechRegions = null;
+      try { speechRegions = await detectSpeechRegions(audio); } catch { /* Keep ASR available if the optional detector cannot load. */ }
       setStatus(`正在识别 ${index + 1}/${items.length}：${item.file.name}`);
-      return recognizeCaptions(transcriber, audio, () => setStatus(`正在校准语音时间 ${index + 1}/${items.length}：${item.file.name}`));
+      const result = await recognizeCaptions(transcriber, audio,
+        (part, total) => setStatus(`正在局部校准 ${part}/${total}（视频 ${index + 1}/${items.length}）：${item.file.name}`), { speechRegions, ...config });
+      if (speechRegions === null) result.reviewNeeded = true;
+      return result;
     }, () => setStatus('等待其他视频处理任务…'));
     if (!cues.length) throw new Error('没有识别到可用的语音字幕。');
     item.cuesText = serializeCues(cues);

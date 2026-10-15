@@ -11,6 +11,11 @@ const browser = await chromium.launch({ headless: true, channel: process.env.TES
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 await page.addInitScript(({ key, version }) => localStorage.setItem(key, version), { key: SEEN_RELEASE_KEY, version: RELEASE.version });
 const errors = [];
+// This test isolates transport/UI from acoustic-model accuracy. The opt-in
+// real-ASR regression separately runs the actual browser VAD and ASR models.
+await page.route('**/src/caption-speech.js', route => route.fulfill({ contentType: 'text/javascript', body: `
+  export async function detectSpeechRegions(audio) { return [{ start: 0, end: audio.length / 16000 }]; }
+` }));
 page.on('pageerror', (error) => errors.push(error.message));
 page.on('dialog', async (dialog) => { errors.push(dialog.message()); await dialog.dismiss(); });
 await page.route(/(?:@huggingface_transformers|transformers\.web).*\.js/, (route) => route.fulfill({
@@ -22,9 +27,11 @@ await page.route(/(?:@huggingface_transformers|transformers\.web).*\.js/, (route
         const calls = window.recognitionCalls ||= [];
         calls.push({ model, onset, duration: audio.length / 16000, options });
         return { chunks: [
+          { text: '[MUSIC', timestamp: [0, onset / 2] },
+          { text: 'PLAYING]', timestamp: [onset / 2, onset] },
           { text: 'Video' + calls.length, timestamp: [onset, onset + 0.2] },
           { text: ' caption.', timestamp: [onset, onset + 0.5] },
-          { text: 'Unknown start.', timestamp: [null, null] },
+          { text: 'More words.', timestamp: [onset + 0.5, onset + 0.7] },
           { text: 'Outside.', timestamp: [audio.length / 16000 + 1, null] },
         ] };
       };
@@ -37,6 +44,8 @@ await page.route(/(?:@huggingface_transformers|transformers\.web).*\.js/, (route
 try {
   await page.goto(`${process.env.TEST_BASE_URL || 'http://127.0.0.1:5173'}/#subtitles`);
   await page.waitForLoadState('networkidle');
+  assert.equal(await page.locator('#subtitleRecognitionModel').inputValue(), 'tiny');
+  assert.match(await page.locator('#subtitleModelCapability').textContent(), /Tiny.*清晰人声.*错词/);
   // Two files with different input sample rates and different track start delays.
   const sources = await page.evaluate(async () => {
     const { FFmpeg } = await import('/node_modules/@ffmpeg/ffmpeg/dist/esm/index.js');
@@ -71,12 +80,13 @@ try {
   for (const [index, onset] of [[0, 1.2], [1, 0.4]]) {
     assert.ok(Math.abs(calls[index].onset - onset) < 0.04, `onset ${calls[index].onset}, expected ${onset}`);
     assert.ok(sources[index].oldOnset < 0.05, `old onset ${sources[index].oldOnset}`);
-    assert.equal(calls[index].model, 'Xenova/whisper-base');
+    assert.equal(calls[index].model, 'Xenova/whisper-tiny.en');
+    assert.equal(calls[index].options.language, undefined);
+    assert.equal(calls[index].options.task, undefined);
     assert.equal(calls[index].options.stride_length_s, 5);
     await page.locator('.subtitle-batch-item').nth(index).click();
     await page.waitForFunction((i) => document.querySelector('#subtitleActiveName').textContent === `delayed-${i + 1}.mp4`, index);
-    assert.equal(await page.locator('.subtitle-cue-text').count(), 1);
-    assert.equal(await page.locator('.subtitle-cue-text').inputValue(), `Video${index + 1} caption. Unknown start.`);
+    assert.deepEqual(await page.locator('.subtitle-cue-text').evaluateAll(nodes => nodes.map(node => node.value)), [`Video${index + 1} caption.`, 'More words.']);
     const serialized = await page.locator('#subtitleCues').inputValue();
     assert.ok(Math.abs(Number(serialized.split('|')[0]) - onset) < 0.04, serialized);
     await page.locator('#subtitleFontFamily').selectOption(index === 0 ? 'impact' : 'yahei');
@@ -86,12 +96,21 @@ try {
   assert.equal(await page.locator('#subtitleFontFamily').inputValue(), 'impact');
   await page.locator('.subtitle-batch-item').last().click();
   assert.equal(await page.locator('#subtitleFontFamily').inputValue(), 'yahei');
-  await page.locator('#subtitleRecognitionModel').selectOption('tiny');
+  await page.locator('#subtitleRecognitionLanguage').selectOption('zh');
+  assert.match(await page.locator('#subtitleModelCapability').textContent(), /Tiny 多语言.*中文/);
+  await page.locator('#transcribeBtn').click();
+  assert.equal(await page.locator('#subtitleRecognitionLanguage').isDisabled(), true);
+  await page.waitForFunction(() => document.querySelector('#subtitleStatus').textContent.startsWith('已生成'));
+  assert.equal(await page.evaluate(() => window.recognitionCalls.at(-1).options.language), 'zh');
+  await page.locator('#subtitleRecognitionLanguage').selectOption('en');
+  await page.locator('#subtitleRecognitionModel').selectOption('base');
+  assert.match(await page.locator('#subtitleModelCapability').textContent(), /Base.*较慢.*内存/);
   await page.locator('#transcribeBtn').click();
   await page.waitForFunction(() => document.querySelector('#subtitleStatus').textContent.startsWith('已生成'));
-  assert.deepEqual(await page.evaluate(() => window.modelLoads), ['Xenova/whisper-base', 'Xenova/whisper-tiny']);
-  assert.equal(await page.evaluate(() => window.disposedModels), 1);
-  assert.equal(await page.evaluate(() => window.recognitionCalls.at(-1).model), 'Xenova/whisper-tiny');
+  assert.deepEqual(await page.evaluate(() => window.modelLoads), ['Xenova/whisper-tiny.en', 'Xenova/whisper-tiny', 'Xenova/whisper-base']);
+  assert.equal(await page.evaluate(() => window.disposedModels), 2);
+  assert.equal(await page.evaluate(() => window.recognitionCalls.at(-1).model), 'Xenova/whisper-base');
+  assert.equal(await page.evaluate(() => window.recognitionCalls.at(-1).options.language), 'en');
   assert.deepEqual(errors, []);
   await mkdir('output', { recursive: true });
   await page.screenshot({ path: 'output/caption-recognition.png', fullPage: true });

@@ -16,7 +16,7 @@ export function decodeTranscriptionPcm(bytes) {
   return samples;
 }
 
-export function transcriptionOptions() {
+export function transcriptionOptions({ language = 'en', englishOnly = false } = {}) {
   // Give words around a 30-second boundary enough context in both windows.
-  return { task: 'transcribe', return_timestamps: 'word', chunk_length_s: 30, stride_length_s: 5 };
+  return { ...(!englishOnly ? { task: 'transcribe', language } : {}), return_timestamps: 'word', chunk_length_s: 30, stride_length_s: 5 };
 }

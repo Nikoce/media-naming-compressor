@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { RELEASE } from './src/release-notes.js';
 
 const manifest = { schema: 1, buildId: process.env.GITHUB_SHA || randomUUID(), ...RELEASE };
@@ -18,6 +19,8 @@ export default defineConfig({
     },
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify(manifest) });
+      this.emitFile({ type: 'asset', fileName: 'licenses/Silero-VAD-LICENSE.txt',
+        source: readFileSync(new URL('./src/assets/silero-vad-LICENSE', import.meta.url), 'utf8') });
     },
   }],
   base: './',

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { refineWordTimestamps, needsTimestampRefinement } from './caption-refinement.js';
-import { recognizeCaptions } from './caption-recognition.js';
+import { recognizeCaptions, speechChunks } from './caption-recognition.js';
 
 const cases = [
   { wordEnd: 3.98, spokenStart: 3.72, nextStart: 4.26, nextEnd: 4.88, segmentEnd: 7.12 },
@@ -73,4 +73,27 @@ test('matching context disambiguates a repeated first word', () => {
     { text: 'Hello friend.', timestamp: [3.6, 4.4] },
   ]);
   assert.deepEqual(result.chunks[0].timestamp, [3.6, 4]);
+});
+
+test('split bracketed annotations are removed while spoken words and unknown annotations remain', async () => {
+  const result = await recognizeCaptions(async () => ({ chunks: [
+    { text: '[MUSIC', timestamp: [0, 2] }, { text: 'PLAYING]', timestamp: [2, 3] },
+    { text: 'Say', timestamp: [3.5, 3.8] }, { text: 'music.', timestamp: [3.8, 4.2] },
+    { text: '(Hello)', timestamp: [5, 5.4] },
+  ] }), new Float32Array(6 * 16000));
+  assert.equal(result.cues.map(cue => cue.text).join(' '), 'Say music. (Hello)');
+  assert.equal(result.cues[0].start, 3.5);
+});
+
+test('sound labels never reach cues even when inline, split, or outside a fixed label vocabulary', () => {
+  const original = [
+    { text: '[MUSIC', timestamp: [0, 1] }, { text: 'PLAYING] Hello.', timestamp: [1, 2] },
+    { text: '[door closes] Again.', timestamp: [3, 4] },
+    { text: '【掌声】', timestamp: [4, 5] }, { text: '(LAUGHTER)', timestamp: [5, 6] },
+    { text: '[BLANK_AUDIO]', timestamp: [6, 7] }, { text: '♪ Goodbye. ♪', timestamp: [7, 8] },
+  ];
+  const filtered = speechChunks(original);
+  assert.deepEqual(filtered.map(chunk => chunk.text.trim()), ['Hello.', 'Again.', 'Goodbye.']);
+  assert.deepEqual(filtered.map(chunk => chunk.timestamp), [[1, 2], [3, 4], [7, 8]]);
+  assert.equal(original[0].text, '[MUSIC');
 });

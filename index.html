@@ -183,10 +183,12 @@
           </section>
           <section class="panel subtitle-recognition-panel">
             <div class="subtitle-step-heading"><span class="subtitle-step-number">03</span><div><h3>识别语音</h3><p>批量识别会按队列顺序处理。</p></div></div>
-            <label class="subtitle-property"><span>识别精度</span><select id="subtitleRecognitionModel"><option value="base">精准优先（推荐）</option><option value="tiny">快速识别</option></select></label>
+            <label class="subtitle-property"><span>识别模式</span><select id="subtitleRecognitionModel" aria-describedby="subtitleModelCapability"><option value="tiny">快速识别（Tiny · 默认）</option><option value="base">精准识别（Base · 较慢）</option></select></label>
+            <label class="subtitle-property"><span>口播语言</span><select id="subtitleRecognitionLanguage" aria-describedby="subtitleModelCapability"><option value="en">英语</option></select></label>
+            <p class="subtitle-model-capability" id="subtitleModelCapability" aria-live="polite">Tiny.en 英文专用轻量模型：按英语转写，速度快，适合清晰人声和批量素材；强噪声、重口音或多人同时说话时可能错词、漏词。</p>
             <div class="subtitle-upload-actions"><button class="primary-button" id="transcribeAllBtn" type="button" disabled>批量识别字幕</button><button class="secondary-button" id="transcribeBtn" type="button" disabled>只识别当前视频</button></div>
             <div class="subtitle-flow-status" id="subtitleStatus" role="status" aria-live="polite">等待视频</div>
-            <p class="subtitle-model-note">精准模式识别更慢，适合批量校对。首次使用需下载对应模型，请保持页面打开。</p>
+            <p class="subtitle-model-note">两种模式均包含语音边界检查与异常片段校准。首次使用需下载对应模型，请保持页面打开；导出前仍建议试听校对。</p>
           </section>
         </aside>
         <div class="subtitle-main" aria-label="字幕预览与编辑">

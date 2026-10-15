@@ -24,7 +24,7 @@ try {
   await page.goto(`${base}/#subtitles`);
   await page.waitForLoadState('networkidle');
   assert.equal(await page.locator('#appUpdateTitle').innerText(), RELEASE.title);
-  assert.equal(await page.locator('#appUpdateFeatures li').count(), 3);
+  assert.equal(await page.locator('#appUpdateFeatures li').count(), RELEASE.features.length);
   assert.equal(await page.locator('#appUpdateCountdown').isVisible(), false);
   await mkdir('output', { recursive: true });
   await page.screenshot({ path: 'output/app-updates-desktop.png' });
