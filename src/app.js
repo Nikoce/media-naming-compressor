@@ -1060,8 +1060,9 @@ function triggerDownload(url, name) {
 function batchZipName() {
   const date = /^\d{6}$/.test(fields.date.value) ? fields.date.value : todayYYMMDD();
   const product = safePart(fields.product.value) || '产品';
+  const theme = normalizeTheme(fields.theme.value) || '主题';
   const maker = safePart(fields.maker.value) || '制作人';
-  return `${date}-${product}-${maker}.zip`;
+  return `${date}-${product}-${theme}-${maker}.zip`;
 }
 
 async function downloadBatchZip() {
