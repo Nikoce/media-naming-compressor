@@ -86,13 +86,43 @@ function splitLongWord(word) {
   });
 }
 
-export function cuesFromWords(chunks) {
-  const alignedWords = chunks.flatMap((chunk) => {
-    const start = Number(chunk.timestamp?.[0]);
-    const end = chunk.timestamp?.[1] == null ? start + 0.6 : Number(chunk.timestamp[1]);
-    if (!Number.isFinite(start) || !Number.isFinite(end) || !cleanText(chunk.text)) return [];
-    return splitLongWord({ text: chunk.text, start: Math.max(0, start), end: Math.max(start + 0.05, end) });
-  }).sort((a, b) => a.start - b.start);
+function alignChunks(chunks, duration) {
+  const words = [];
+  let prefix = '';
+  const limit = Number.isFinite(duration) && duration > 0 ? duration : Infinity;
+  for (const chunk of chunks) {
+    const text = cleanText(chunk.text);
+    if (!text) continue;
+    const [rawStart, rawEnd] = chunk.timestamp || [];
+    const previous = words.at(-1);
+    const hasStart = typeof rawStart === 'number' && Number.isFinite(rawStart);
+    const hasEnd = typeof rawEnd === 'number' && Number.isFinite(rawEnd);
+    // Missing timestamps are unknown, not zero. Keep their text with an anchored
+    // neighbour instead of moving it to the beginning of the video.
+    if (!hasStart) {
+      if (previous) {
+        previous.text = appendWord(previous.text, text);
+        if (hasEnd) previous.end = Math.min(limit, Math.max(previous.end, rawEnd));
+      } else prefix = appendWord(prefix, text);
+      continue;
+    }
+    if (rawStart >= limit) continue;
+    // Preserve transcript order even when overlap decoding returns tied/backward
+    // starts. Sorting first can reorder words, and hard-cutting ties loses text.
+    const start = Math.max(0, rawStart, previous?.start ?? 0);
+    const end = Math.min(limit, Math.max(start + 0.05, hasEnd ? rawEnd : start + 0.6));
+    const wordText = appendWord(prefix, text);
+    prefix = '';
+    if (previous && start === previous.start) {
+      previous.text = appendWord(previous.text, wordText);
+      previous.end = Math.max(previous.end, end);
+    } else words.push({ text: wordText, start, end });
+  }
+  return words.flatMap(splitLongWord);
+}
+
+export function cuesFromWords(chunks, { duration } = {}) {
+  const alignedWords = alignChunks(chunks, duration);
 
   const durations = alignedWords.map((word) => word.end - word.start)
     .filter((duration) => duration >= 0.05 && duration <= 1.2).sort((a, b) => a - b);

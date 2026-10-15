@@ -1,10 +1,13 @@
 // Run against npm run dev. Set PLAYWRIGHT_MODULE to a bundled playwright/index.mjs if needed.
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
+import { RELEASE } from '../src/release-notes.js';
+import { SEEN_RELEASE_KEY } from '../src/app-updates.js';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE
   ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : 'playwright');
 const browser = await chromium.launch({ headless: true, channel: process.env.TEST_BROWSER_CHANNEL || 'chrome' });
 const context = await browser.newContext({ acceptDownloads: true });
+await context.addInitScript(({ key, version }) => localStorage.setItem(key, version), { key: SEEN_RELEASE_KEY, version: RELEASE.version });
 const base = process.env.TEST_BASE_URL || 'http://127.0.0.1:5173';
 const errors = [];
 const page = await context.newPage();

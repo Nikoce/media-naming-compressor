@@ -1,6 +1,6 @@
 {
   "name": "media-naming-compressor",
-  "version": "0.8.0",
+  "version": "0.9.1",
   "private": true,
   "description": "Free browser-local batch media naming and WebCodecs compression workbench with FFmpeg fallback.",
   "type": "module",

@@ -1,4 +1,4 @@
-# Media Naming Compressor v0.8
+# Media Naming Compressor v0.9
 
 一个部署在 GitHub Pages 上的免费浏览器工具，用于批量读取视频信息、生成统一文件名并压制为 MP4。视频只在当前浏览器内处理，不会上传到服务器。
 
@@ -28,6 +28,10 @@ YYMMDD_P-{产品}_H-{主题}[H重复时-01/-02...]_VL-{S/M/L}-{时长}_S-{尺寸
 - ZIP 压缩包按 `日期-产品-制作人.zip` 命名。
 - 站内独立的「自动字幕」页面（`#subtitles`）：一次选择或拖入多个视频，加入视频队列并逐个识别语音。批量识别按队列顺序运行，在浏览器内使用 Whisper 的词级时间戳生成短字幕；分段优先参考句末、逗号和气口，时长超限时避免拆开常见英文短语，常见缩写不会误判为句末。中文长词块优先在标点后切分。字幕按首词和末词的时间出现及结束，异常过长的末词时间会修正，停顿时隐藏，相邻字幕直接硬切。
 - 每个视频独立保存字幕文本和样式；切换队列中的视频即可播放预览、按时间定位和校对字幕。三种样式以实际文字效果展示。
+- 自动字幕默认「精准优先」使用 Whisper Base，也可选择 Tiny 快速识别；切换模型会释放上一个模型。分段保留 5 秒重叠上下文，固定执行原语言转写。音频直接提取为 16 kHz 单声道 PCM，保留音轨片头延迟和时间戳空隙，避免字幕整体提前；识别时间限制在当前音频范围内，缺失时间戳与相同/倒退的词起点会合并到相邻锚点，保留文字顺序。
+- 检测到短词占据异常长时间时，使用同一模型的句级时间戳进行一次补充校准，仅采用句首文字和后续上下文能对应上的边界，防止开场音乐后的首词被放到第 0 秒再提前截断。正常词时间不增加推理轮次；校准无可靠匹配时显示「时间需校对」。`[music]` 等明确的非语音说明不会作为口播字幕输出。
+- 字体提供默认无衬线、衬线、等宽，以及微软雅黑、黑体、宋体、楷体、仿宋、苹方、Arial、Helvetica、Verdana、Times New Roman、Georgia、Impact、Consolas，共 16 个选项。使用本机字体，缺失时按字体族回退；预览与两种导出引擎共用同一字体配置。
+- 首次打开一个新版本时弹窗介绍功能，关闭后同版本不再自动弹出，可从右上角「更新说明」重看。打开页面、回到前台、网络恢复及每分钟检查部署版本；发现更新后，空闲页面在弹窗内倒计时 15 秒自动刷新。有视频、字幕或导出结果时停止自动刷新，用户下载保存后可主动刷新；处理任务进行中禁用刷新按钮。「稍后更新」取消当次倒计时，同一更新不反复弹窗。后台页面不自动刷新，缓存未更新时不会循环刷新。
 - 可单独烧录并导出 MP4，或将所有已有字幕的视频批量烧录并打包为 ZIP。优先使用 MediaBunny/WebCodecs 逐帧叠加字幕，字幕图层仅在文字变化时重绘，AAC 源音轨直接复制；不支持的素材自动回退到 FFmpeg。
 - 「发送到命名」立即移交原视频和独立的字幕/样式快照，不再等待整段视频烧录。导出时按所选预设一次完成字幕合成与压制，「仅压制」也会烧录字幕；成功后再次命名可直接使用成品。发送后在字幕页继续编辑，不会改变已发送的快照，需要重新发送才会采用新修改。
 - FFmpeg 兼容路径保持字幕图片到下一个字幕或透明空白帧，保留完整显示区间；图片时间精度为毫秒，停顿和片尾不残留上一条字幕。字幕全部超出视频时长时会报错，防止导出看似成功但没有字幕的文件。
@@ -67,13 +71,19 @@ npm run build
 
 ```bash
 node scripts/test-caption-export.mjs
+node scripts/test-caption-recognition.mjs
+node scripts/test-app-updates.mjs
 ```
 
-也可设置 `PLAYWRIGHT_MODULE` 指向已有 Playwright 的 `index.mjs`，通过 `TEST_BROWSER_CHANNEL` 指定浏览器通道，`TEST_BASE_URL` 指定开发服务器。该回归生成带 AAC 音轨的黑色视频，检查发送阶段不加载 FFmpeg、跨窗口排队、命名导出与仅压制、两种引擎导出的每帧字幕和停顿、音轨及完整时长。macOS Safari 实机仍需在 Mac 上验证，Windows 的浏览器测试不等同于 Mac 实机测试。
+也可设置 `PLAYWRIGHT_MODULE` 指向已有 Playwright 的 `index.mjs`，通过 `TEST_BROWSER_CHANNEL` 指定浏览器通道，`TEST_BASE_URL` 指定开发服务器。导出回归生成带 AAC 音轨的黑色视频，检查发送阶段不加载 FFmpeg、跨窗口排队、命名导出与仅压制、两种引擎导出的每帧字幕和停顿、音轨及完整时长。识别回归使用真实 FFmpeg，批量测试 44.1/48 kHz 音频及不同音轨延迟、字幕归属、异常时间戳、字体设置保留与模型释放；语音推理使用确定性替身，不下载模型，也不验证真实语音识别准确率。macOS Safari 实机仍需在 Mac 上验证，Windows 的浏览器测试不等同于 Mac 实机测试。
+
+另有真实语音回归 `scripts/test-caption-real-asr.mjs`：设置 `CAPTION_FIXTURE_DIR` 为两个 CatBand 01/02 原视频所在目录，先启动开发服务器，再运行该脚本。它实际提取原片音频，并使用 Base 与 Tiny 量化模型检查首句不落在片头音乐区间、对白文字保留、时间不重叠且不超出音频时长。首次运行下载模型到 `output/asr-model-cache`，结果写入 `output/caption-real-asr-report.json`；源视频、模型缓存与报告均不提交。该用例验证这两个问题样本，不代表所有口音、音乐或噪声场景都具有人工校对精度。
 
 本次优化参考 [MediaBunny 的逐帧处理接口](https://github.com/Vanilagy/mediabunny/blob/main/src/conversion.ts)、[FFmpeg 的 framesync 参数](https://ffmpeg.org/ffmpeg-filters.html#Options-for-filters-with-several-inputs-_0028framesync_0029) 和 [LosslessCut 的多实例说明](https://github.com/mifi/lossless-cut/blob/master/docs/troubleshooting.md)。
 
 `predev` 和 `prebuild` 会把 FFmpeg 回退引擎的 `@ffmpeg/core` 运行文件复制到 `public/ffmpeg/`。该目录和 `dist/` 都是生成产物，不提交到 Git。
+
+每次发版需同步修改 `package.json` / `package-lock.json` 的版本与 `src/release-notes.js` 的功能说明。Vite 构建自动生成 `version.json`，与页面内置的构建标识一致；GitHub Actions 使用提交 SHA，本地构建使用唯一标识。首次部署更新检测功能后，已经打开的更早版本页面仍需手动刷新一次，后续版本才能自动检测。
 
 ## GitHub Pages 部署
 

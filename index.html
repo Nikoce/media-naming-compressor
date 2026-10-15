@@ -18,7 +18,7 @@
           <p>批量命名、视频压制与自动字幕，都在当前浏览器完成。</p>
         </div>
       </div>
-      <div class="local-badge"><span></span>零费用 · 本地处理</div>
+      <div class="topbar-actions"><div class="local-badge"><span></span>零费用 · 本地处理</div><button id="appUpdateTrigger" class="update-trigger" type="button">更新说明</button></div>
     </header>
 
     <nav class="page-nav" aria-label="工具页面">
@@ -183,9 +183,10 @@
           </section>
           <section class="panel subtitle-recognition-panel">
             <div class="subtitle-step-heading"><span class="subtitle-step-number">03</span><div><h3>识别语音</h3><p>批量识别会按队列顺序处理。</p></div></div>
+            <label class="subtitle-property"><span>识别精度</span><select id="subtitleRecognitionModel"><option value="base">精准优先（推荐）</option><option value="tiny">快速识别</option></select></label>
             <div class="subtitle-upload-actions"><button class="primary-button" id="transcribeAllBtn" type="button" disabled>批量识别字幕</button><button class="secondary-button" id="transcribeBtn" type="button" disabled>只识别当前视频</button></div>
             <div class="subtitle-flow-status" id="subtitleStatus" role="status" aria-live="polite">等待视频</div>
-            <p class="subtitle-model-note">首次识别需要下载语音模型，请保持页面打开。</p>
+            <p class="subtitle-model-note">精准模式识别更慢，适合批量校对。首次使用需下载对应模型，请保持页面打开。</p>
           </section>
         </aside>
         <div class="subtitle-main" aria-label="字幕预览与编辑">
@@ -262,11 +263,20 @@
               <label class="subtitle-property"><span>垂直 Y <output id="subtitlePositionYValue" for="subtitlePositionY">85%</output></span><input id="subtitlePositionY" type="range" min="10" max="90" step="1" value="85" /></label>
             </div>
           </div>
-          <p class="subtitle-style-note">每个视频单独保存设置，预览与导出使用相同效果。</p>
+          <p class="subtitle-style-note">每个视频单独保存设置，预览与导出使用相同效果。字体取自本机，未安装时使用相近字体。</p>
         </aside>
       </div>
     </section>
   </main>
+  <dialog id="appUpdateDialog" class="update-dialog" aria-labelledby="appUpdateTitle" aria-describedby="appUpdateHint">
+    <div class="update-dialog-body">
+      <div class="update-dialog-meta"><span id="appUpdateEyebrow">本次更新</span><span id="appUpdateVersion"></span></div>
+      <h2 id="appUpdateTitle"></h2>
+      <ul id="appUpdateFeatures" class="update-features"></ul>
+      <div class="update-refresh-note"><p id="appUpdateHint" role="status"></p><span id="appUpdateCountdown" hidden></span></div>
+      <div class="update-dialog-actions"><button id="appUpdateLater" class="secondary-button" type="button" autofocus>关闭</button><button id="appUpdateConfirm" class="primary-button" type="button">开始使用</button></div>
+    </div>
+  </dialog>
   <script type="module" src="/src/app.js"></script>
 </body>
 </html>

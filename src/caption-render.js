@@ -1,4 +1,5 @@
 import { wrapCaptionLines } from './caption-lines.js';
+import { captionFontFamily } from './caption-fonts.js';
 function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
 
 export function captionFontSize(width, height, options) {
@@ -20,7 +21,6 @@ function hexRgba(hex, opacity) {
 
 export function drawCaption(context, cue, width, height, bandHeight, style, options) {
   let fontSize = captionFontSize(width, height, options);
-  const families = { sans: 'Arial, "PingFang SC", "Microsoft YaHei", sans-serif', serif: 'Georgia, "Songti SC", "SimSun", serif', mono: 'Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace' };
   context.textAlign = options.textAlign || 'center';
   context.textBaseline = 'middle';
   const centerX = width * options.positionX / 100;
@@ -28,7 +28,7 @@ export function drawCaption(context, cue, width, height, bandHeight, style, opti
   const textX = centerX + (context.textAlign === 'left' ? -maxWidth / 2 : context.textAlign === 'right' ? maxWidth / 2 : 0);
   let visibleLines;
   do {
-    context.font = `${options.bold ? 800 : 400} ${fontSize}px ${families[options.fontFamily] || families.sans}`;
+    context.font = `${options.bold ? 800 : 400} ${fontSize}px ${captionFontFamily(options.fontFamily)}`;
     visibleLines = wrapCaptionLines(cue.text, maxWidth, (text) => context.measureText(text).width);
     if (visibleLines.length <= 3 || fontSize <= 12) break;
     fontSize = Math.max(12, Math.floor(fontSize * 0.9));

@@ -7,6 +7,7 @@ import { burnSubtitleJob } from './caption-export.js';
 import { runMediaJob } from './media-jobs.js';
 import { durationPart, normalizeTheme, parseMediaName, resolveNamingValues } from './naming.js';
 import { setupHistoryDropdown } from './history-dropdown.js';
+import { setupAppUpdates } from './app-updates.js';
 import {
   ALL_FORMATS,
   BlobSource,
@@ -1239,7 +1240,7 @@ function syncPage() {
 }
 window.addEventListener('hashchange', syncPage);
 syncPage();
-setupSubtitles({
+const subtitleWorkspace = setupSubtitles({
   ensureFFmpeg,
   async onSend(job) {
     if (state.processing || state.translating) throw new Error('请等待当前批量任务完成。');
@@ -1281,6 +1282,10 @@ setupSubtitles({
     $('notice').textContent = `已发送 ${outputs.length - failed.length} 个视频及字幕${failures.length || skipped.length || failed.length ? `，${failures.length + skipped.length + failed.length} 个未完成，详见下方` : ''}。补全字段后导出，字幕合成与压制一次完成。`;
     fields.product.focus();
   },
+});
+setupAppUpdates({
+  hasWork: () => state.files.length > 0 || state.completedOutputs.length > 0 || subtitleOutputs.length > 0 || subtitleWorkspace.hasWork(),
+  isProcessing: () => state.processing || state.translating || subtitleWorkspace.isProcessing(),
 });
 window.addEventListener('beforeunload', () => {
   releaseOutputs();

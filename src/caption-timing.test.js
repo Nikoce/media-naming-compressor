@@ -152,3 +152,39 @@ test('a long Chinese chunk prefers a punctuation boundary and respects width', (
   assert.equal(cues.map(({ text }) => text).join(''), '这个玩法很有意思，但是广告真的太多了，希望能够改进。');
   assert.ok(cues.every(({ text }) => [...text].length <= 18));
 });
+
+test('unknown starts keep text with its neighbour instead of becoming time zero', () => {
+  const cues = cuesFromWords([
+    { text: ' Hello', timestamp: [null, null] },
+    { text: ' world', timestamp: [5, 5.5] },
+    { text: '.', timestamp: [null, 5.6] },
+    { text: ' Again.', timestamp: [8, null] },
+  ]);
+  assert.deepEqual(cues, [
+    { start: 5, end: 5.6, text: 'Hello world.' },
+    { start: 8, end: 8.6, text: 'Again.' },
+  ]);
+  assert.deepEqual(cuesFromWords([{ text: 'unanchored', timestamp: [null, null] }]), []);
+});
+
+test('tied and backward word starts preserve transcript order and all text', () => {
+  const cues = cuesFromWords([
+    { text: ' Hello.', timestamp: [5, 5.3] },
+    { text: ' World', timestamp: [5, 5.6] },
+    { text: ' again.', timestamp: [4.9, 5.8] },
+    { text: ' Goodbye.', timestamp: [8, 8.4] },
+  ]);
+  assert.equal(cues.map(({ text }) => text).join(' '), 'Hello. World again. Goodbye.');
+  assert.equal(cues[0].start, 5);
+  assert.ok(cues.every((cue, index) => !index || cue.start >= cues[index - 1].end));
+});
+
+test('recognition output is bounded by its own audio duration for every batch item', () => {
+  const chunks = [
+    { text: ' Last.', timestamp: [2, null] },
+    { text: ' Phantom.', timestamp: [5, 6] },
+  ];
+  assert.deepEqual(cuesFromWords(chunks, { duration: 2.2 }), [{ start: 2, end: 2.2, text: 'Last.' }]);
+  assert.equal(cuesFromWords(chunks, { duration: 7 }).at(-1).text, 'Phantom.');
+  assert.equal(chunks[0].timestamp[1], null);
+});
